@@ -13,6 +13,13 @@ class GitHubConfig:
     base_url: str = "https://api.github.com"
     timeout: int = 30
 
+class GitHubError(Exception):
+    """Erro específico para operações com GitHub"""
+    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.details = details or {}
+
 class GitHubTool:
     """
     Ferramenta para interação com a API do GitHub.
@@ -64,7 +71,7 @@ class GitHubTool:
             Dict contendo informações da issue criada
             
         Raises:
-            GitHubAPIError: Se houver erro na criação
+            GitHubError: Se houver erro na criação
         """
         try:
             self._ensure_repo()
@@ -237,7 +244,3 @@ class GitHubTool:
                 "error": str(e),
                 "message": f"Erro ao listar issues: {str(e)}"
             }
-
-class GitHubAPIError(Exception):
-    """Exceção personalizada para erros da API do GitHub"""
-    pass

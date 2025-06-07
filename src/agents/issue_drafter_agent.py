@@ -1,5 +1,5 @@
 """
-IssueModelerAgent - Agente Criador de Rascunhos de Issues
+IssueDrafterAgent - Agente Criador de Rascunhos de Issues
 
 Localização: src/agents/issue_drafter_agent.py
 
@@ -47,7 +47,7 @@ class LLMProvider(Protocol):
         ...
 
 
-class IssueModelerAgent:
+class IssueDrafterAgent:
     """
     Agente responsável por criar rascunhos estruturados de issues.
     
@@ -492,7 +492,7 @@ if __name__ == "__main__":
     
     # Cria agente com provedor mock
     mock_llm = MockLLMProvider()
-    agent = IssueModelerAgent(mock_llm)
+    agent = IssueDrafterAgent(mock_llm)
     
     # Teste: Criação de rascunho para bug crítico
     test_log = LogModel(

@@ -8,7 +8,7 @@ import logging
 import sys
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # Configurações e modelos
 from .config import settings, validate_environment, print_config_summary
@@ -27,6 +27,69 @@ from .agents.issue_refiner_agent import IssueRefinerAgent
 from .agents.issue_creator_agent import IssueCreatorAgent
 from .agents.issue_notificator_agent import IssueNotificatorAgent
 
+# MockLLMProvider para testes
+class MockLLMProvider:
+    """Provedor de modelo de linguagem simulado para testes"""
+    
+    def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> str:
+        """Simula uma resposta de um modelo de linguagem"""
+        if "análise de bug" in prompt.lower() or "bug analysis" in prompt.lower():
+            return """
+            {
+                "is_bug": true,
+                "bug_type": "DATABASE_CONNECTION",
+                "criticality": "HIGH",
+                "confidence": 0.92,
+                "reasoning": "Log mostra uma exceção de timeout de conexão com banco de dados, indicando um problema de infraestrutura crítico",
+                "technical_details": {
+                    "component": "DatabaseConnectionPool",
+                    "error_type": "ConnectionTimeout",
+                    "affected_service": "UserService"
+                },
+                "recommended_action": "INVESTIGATE"
+            }
+            """
+        elif "rascunho de issue" in prompt.lower() or "issue draft" in prompt.lower():
+            return """
+            {
+                "title": "Erro de conexão com banco de dados no serviço de autenticação",
+                "description": "## Resumo\\n\\nO serviço de autenticação está apresentando falhas ao tentar conectar ao banco de dados, resultando em timeout após 30 segundos.\\n\\n## Detalhes\\n\\nO erro ocorre durante o processo de login de usuários, causando falhas de autenticação.",
+                "labels": ["bug", "critical", "database"],
+                "priority": "high",
+                "assignees": [],
+                "reproduction_steps": ["Tentar fazer login com credenciais válidas", "Observar erro de timeout"],
+                "environment_info": {
+                    "environment": "production",
+                    "component": "UserService",
+                    "version": "1.0"
+                }
+            }
+            """
+        elif "revisão" in prompt.lower() or "review" in prompt.lower():
+            return """
+            {
+                "title_score": 4,
+                "description_score": 3,
+                "technical_score": 4,
+                "reproduction_score": 3,
+                "priority_score": 5,
+                "formatting_score": 4,
+                "overall_score": 3.8,
+                "approved": true,
+                "feedback": "Issue bem estruturada, mas a descrição poderia ter mais detalhes técnicos",
+                "improvements": [
+                    "Adicionar mais informações sobre o ambiente",
+                    "Detalhar melhor os passos de reprodução"
+                ]
+            }
+            """
+        else:
+            return """
+            {
+                "response": "Resposta genérica simulada para prompts não reconhecidos",
+                "status": "success"
+            }
+            """
 
 class BugFinderSystem:
     """
@@ -67,13 +130,35 @@ class BugFinderSystem:
     def initialize_agents(self):
         """Inicializa todos os agentes do sistema"""
         try:
+            # Cria um provedor de modelo de linguagem simulado
+            llm_provider = MockLLMProvider()
+            
+            # Inicializa agentes
             self.log_receiver = LogReceiverAgent()
-            self.bug_analyser = BugAnalyserAgent()
-            self.issue_drafter = IssueDrafterAgent()
-            self.issue_reviewer = IssueReviewerAgent()
+            self.bug_analyser = BugAnalyserAgent(llm_provider=llm_provider)
+            self.issue_drafter = IssueDrafterAgent(llm_provider=llm_provider)
+            self.issue_reviewer = IssueReviewerAgent(llm_provider=llm_provider)
             self.issue_refiner = IssueRefinerAgent()
-            self.issue_creator = IssueCreatorAgent()
-            self.issue_notificator = IssueNotificatorAgent()
+            
+            # Inicializa ferramentas e agentes que não usam IA
+            from .tools.github_tool import GitHubTool, GitHubConfig
+            from .tools.discord_tool import DiscordTool, DiscordConfig
+            
+            # Configurações simuladas para testes
+            github_config = GitHubConfig(
+                token="dummy_token",
+                repository="acme/bug-finder"
+            )
+            
+            discord_config = DiscordConfig(
+                webhook_url="https://discord.com/api/webhooks/example"
+            )
+            
+            github_tool = GitHubTool(github_config)
+            discord_tool = DiscordTool(discord_config)
+            
+            self.issue_creator = IssueCreatorAgent(github_tool=github_tool)
+            self.issue_notificator = IssueNotificatorAgent(discord_tool=discord_tool)
             
             # Agente maestro
             self.bug_finder = BugFinderAgent(

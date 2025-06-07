@@ -9,7 +9,7 @@ from .bug_finder_agent import BugFinderAgent
 # Agentes especializados
 from .log_receiver_agent import LogReceiverAgent
 from .bug_analyser_agent import BugAnalyserAgent
-from .issue_drafter_agent import IssueModelerAgent
+from .issue_drafter_agent import IssueDrafterAgent
 from .issue_reviewer_agent import IssueReviewerAgent
 from .issue_refiner_agent import IssueRefinerAgent
 from .issue_creator_agent import IssueCreatorAgent
@@ -20,7 +20,7 @@ __all__ = [
     "BugFinderAgent",
     "LogReceiverAgent",
     "BugAnalyserAgent", 
-    "IssueModelerAgent",
+    "IssueDrafterAgent",
     "IssueReviewerAgent",
     "IssueRefinerAgent",
     "IssueCreatorAgent",
@@ -50,7 +50,7 @@ AGENT_INFO = {
         "inputs": ["LogModel"],
         "outputs": ["BugAnalysis"]
     },
-    "IssueModelerAgent": {
+    "IssueDrafterAgent": {
         "role": "Escritor",
         "description": "Cria rascunhos de issues bem estruturadas",
         "inputs": ["BugAnalysis", "LogModel"],
@@ -113,7 +113,7 @@ def get_agent_pipeline() -> list:
     return [
         "LogReceiverAgent",
         "BugAnalyserAgent", 
-        "IssueModelerAgent",
+        "IssueDrafterAgent",
         "IssueReviewerAgent",
         "IssueRefinerAgent",  # Executado condicionalmente
         "IssueCreatorAgent",
@@ -177,7 +177,7 @@ def get_system_architecture() -> dict:
             },
             {
                 "step": 3,
-                "agent": "IssueModelerAgent",
+                "agent": "IssueDrafterAgent",
                 "action": "Cria rascunho da issue"
             },
             {

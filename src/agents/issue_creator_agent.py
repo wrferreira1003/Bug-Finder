@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, Protocol, List
 from datetime import datetime
 
 from ..models.issue_model import IssueModel, IssuePriority
-from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
+from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
 from ..tools.github_tool import GitHubTool, GitHubError
 from ..config.settings import get_settings
 
@@ -46,8 +46,8 @@ class IssueCreatorAgent:
         
         # Configurações do GitHub
         self.github_config = {
-            'default_repository': self.settings.get('github_repository'),
-            'default_assignees': self.settings.get('github_default_assignees', []),
+            'default_repository': f"{self.settings.github.owner}/{self.settings.github.repository}",
+            'default_assignees': self.settings.github.default_assignees,
             'label_mapping': self._load_label_mapping(),
             'max_retries': 3,
             'retry_delay': 2.0
@@ -235,7 +235,7 @@ class IssueCreatorAgent:
             'validated_data': issue_data
         }
     
-    def _create_github_issue(self, issue_data: Dict[str, Any]) -> GitHubIssue:
+    def _create_github_issue(self, issue_data: Dict[str, Any]) -> GitHubIssueData:
         """
         Cria a issue no GitHub usando a ferramenta.
         """
@@ -254,7 +254,7 @@ class IssueCreatorAgent:
             milestone=issue_data.get('milestone')
         )
     
-    def _configure_issue_metadata(self, github_issue: GitHubIssue, issue_draft: IssueModel):
+    def _configure_issue_metadata(self, github_issue: GitHubIssueData, issue_draft: IssueModel):
         """
         Configura metadados adicionais da issue após criação.
         """
@@ -301,7 +301,7 @@ class IssueCreatorAgent:
         
         return '\n'.join(context_parts) if context_parts else ""
     
-    def _create_success_result(self, issue_draft: IssueModel, github_issue: GitHubIssue) -> IssueCreationResult:
+    def _create_success_result(self, issue_draft: IssueModel, github_issue: GitHubIssueData) -> IssueCreationResult:
         """
         Cria resultado de sucesso.
         """

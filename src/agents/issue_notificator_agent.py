@@ -1,26 +1,25 @@
 """
-IssueNotificatorAgent - Agente Notificador Discord
+IssueNotificatorAgent - Agente de Notificação de Issues
 
 Localização: src/agents/issue_notificator_agent.py
 
 Responsabilidades:
-- Enviar notificações sobre issues criadas para o Discord
-- Formatar mensagens ricas com informações relevantes
-- Personalizar notificações baseadas na criticidade
-- Incluir links diretos para as issues
-- Tratar erros de envio e implementar retry
+- Notificar sobre issues criadas
+- Enviar mensagens para canais específicos (Slack, Teams, etc.)
+- Formatar notificações conforme o canal
+- Controlar filtros de notificação (criticidade, componente, etc.)
 
-Este agente atua como um "mensageiro", informando a equipe
-sobre novos bugs detectados de forma clara e organizada.
+Este agente atua como um "comunicador", garantindo que as equipes
+relevantes sejam notificadas das issues críticas através de diversos canais.
 """
 
 import json
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Protocol, List, Optional
 from datetime import datetime
 
 from ..models.issue_model import IssueModel, IssuePriority
-from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
+from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
 from ..models.notification_model import NotificationResult, NotificationStatus, DiscordMessage
 from ..tools.discord_tool import DiscordTool, DiscordError
 from ..config.settings import get_settings
@@ -528,7 +527,7 @@ class IssueNotificatorAgent:
 # Exemplo de uso e testes
 if __name__ == "__main__":
     from ..models.issue_model import IssueModel, IssuePriority
-    from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
+    from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
     from ..tools.discord_tool import MockDiscordTool
     
     # Configuração básica de logging para testes
@@ -539,7 +538,7 @@ if __name__ == "__main__":
     agent = IssueNotificatorAgent(mock_discord)
     
     # Teste: Notificação de issue criada com sucesso
-    test_github_issue = GitHubIssue(
+    test_github_issue = GitHubIssueData(
         number=123,
         title="Fix database connection timeout in UserService",
         url="https://github.com/empresa/repo/issues/123",

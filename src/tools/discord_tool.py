@@ -13,6 +13,13 @@ class DiscordConfig:
     timeout: int = 30
     retry_attempts: int = 3
 
+class DiscordError(Exception):
+    """Erro específico para operações com Discord"""
+    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.details = details or {}
+
 class DiscordTool:
     """
     Ferramenta para envio de notificações via Discord.
@@ -269,7 +276,3 @@ class DiscordTool:
             result["message"] = "Conexão com Discord funcionando corretamente"
         
         return result
-
-class DiscordAPIError(Exception):
-    """Exceção personalizada para erros da API do Discord"""
-    pass

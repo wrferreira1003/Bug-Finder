@@ -31,7 +31,7 @@ from ..models.process_model import ProcessResult, ProcessStatus, ProcessStep
 
 from .log_receiver_agent import LogReceiverAgent
 from .bug_analyser_agent import BugAnalyserAgent
-from .issue_drafter_agent import IssueModelerAgent
+from .issue_drafter_agent import IssueDrafterAgent
 from .issue_reviewer_agent import IssueReviewerAgent
 from .issue_refiner_agent import IssueRefinerAgent
 from .issue_creator_agent import IssueCreatorAgent
@@ -64,7 +64,7 @@ class BugFinderAgent:
     def __init__(self, 
                  log_receiver: LogReceiverAgent,
                  bug_analyser: BugAnalyserAgent,
-                 issue_drafter: IssueModelerAgent,
+                 issue_drafter: IssueDrafterAgent,
                  issue_reviewer: IssueReviewerAgent,
                  issue_refiner: IssueRefinerAgent,
                  issue_creator: IssueCreatorAgent,
@@ -292,7 +292,7 @@ class BugFinderAgent:
                 status=ProcessStatus.SUCCESS,
                 started_at=datetime.now().isoformat(),
                 completed_at=datetime.now().isoformat(),
-                agent='IssueModelerAgent',
+                agent='IssueDrafterAgent',
                 result={
                     'draft_id': issue_draft.id,
                     'title': issue_draft.title,
@@ -314,7 +314,7 @@ class BugFinderAgent:
                 status=ProcessStatus.FAILED,
                 started_at=datetime.now().isoformat(),
                 completed_at=datetime.now().isoformat(),
-                agent='IssueModelerAgent',
+                agent='IssueDrafterAgent',
                 error=str(e)
             )
             process_result.steps_completed.append(step)
@@ -676,7 +676,7 @@ class BugFinderAgent:
             'managed_agents': [
                 'LogReceiverAgent',
                 'BugAnalyserAgent', 
-                'IssueModelerAgent',
+                'IssueDrafterAgent',
                 'IssueReviewerAgent',
                 'IssueRefinerAgent',
                 'IssueCreatorAgent',

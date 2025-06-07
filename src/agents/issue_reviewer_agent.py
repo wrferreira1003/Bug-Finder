@@ -22,7 +22,7 @@ from enum import Enum
 
 from ..models.issue_model import IssueModel, IssuePriority
 from ..models.review_model import IssueReview, ReviewStatus, ReviewCriteria, ReviewFeedback
-from ..config.prompts import IssueReviewPrompts
+from ..config.prompts import IssueReviewerPrompts
 from ..config.settings import get_settings
 
 
@@ -65,7 +65,7 @@ class IssueReviewerAgent:
         self.llm_provider = llm_provider
         self.logger = logging.getLogger(__name__)
         self.settings = get_settings()
-        self.prompts = IssueReviewPrompts()
+        self.prompts = IssueReviewerPrompts()
         
         # Configurações de qualidade
         self.quality_thresholds = {

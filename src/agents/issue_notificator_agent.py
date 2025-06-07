@@ -15,11 +15,11 @@ relevantes sejam notificadas das issues críticas através de diversos canais.
 
 import json
 import logging
-from typing import Dict, Any, Protocol, List, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from ..models.issue_model import IssueModel, IssuePriority
-from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
+from ..models.creation_model import IssueCreationResult, CreationStatus
 from ..models.notification_model import NotificationResult, NotificationStatus, DiscordMessage
 from ..tools.discord_tool import DiscordTool, DiscordError
 from ..config.settings import get_settings
@@ -46,9 +46,9 @@ class IssueNotificatorAgent:
         
         # Configurações de notificação
         self.notification_config = {
-            'default_channel': self.settings.get('discord_default_channel'),
-            'high_priority_channel': self.settings.get('discord_high_priority_channel'),
-            'mention_roles': self.settings.get('discord_mention_roles', {}),
+            'default_channel': self.settings.discord.default_channel_id,
+            'high_priority_channel': self.settings.discord.notification_channels.get('critical', ''),
+            'mention_roles': self.settings.discord.mention_roles,
             'max_retries': 3,
             'retry_delay': 5.0,
             'enable_embeds': True,
@@ -139,7 +139,7 @@ class IssueNotificatorAgent:
             discord_message = self._prepare_failure_message(creation_result, issue_draft)
             
             # Canal para notificações de erro (pode ser diferente)
-            error_channel = self.settings.get('discord_error_channel', self.notification_config['default_channel'])
+            error_channel = self.settings.discord.notification_channels.get('general', self.notification_config['default_channel'])
             
             # Envio da notificação
             sent_message = self._send_discord_notification(discord_message, error_channel)

@@ -3,18 +3,17 @@ Ponto de entrada principal do Bug Finder.
 Orquestra todo o processo de análise de logs e criação de issues.
 """
 
-import asyncio
 import logging
 import sys
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 
 # Configurações e modelos
 from .config import settings, validate_environment, print_config_summary
 from .models import (
-    LogModel, LogLevel, BugFinderProcess, ProcessStatus, 
-    ProcessResult, ProcessStep, ProcessContext
+    LogModel, LogLevel, BugFinderProcess, 
+    ProcessResult, ProcessContext
 )
 
 # Agentes
@@ -31,7 +30,7 @@ from .agents.issue_notificator_agent import IssueNotificatorAgent
 class MockLLMProvider:
     """Provedor de modelo de linguagem simulado para testes"""
     
-    def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> str:
+    def generate_response(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Simula uma resposta de um modelo de linguagem"""
         if "análise de bug" in prompt.lower() or "bug analysis" in prompt.lower():
             return """
@@ -177,7 +176,7 @@ class BugFinderSystem:
             self.logger.error(f"Erro ao inicializar agentes: {str(e)}")
             raise
     
-    async def process_log(self, log_content: str, **metadata) -> BugFinderProcess:
+    def process_log(self, log_content: str, **metadata) -> BugFinderProcess:
         """
         Processa um log através de todo o pipeline do Bug Finder.
         
@@ -216,7 +215,7 @@ class BugFinderSystem:
             process.context.original_log = log_entry
             
             # Executa o processo através do agente maestro
-            result = await self.bug_finder.process_bug_report(process)
+            result = self.bug_finder.process_bug_report(process)
             
             self.logger.info(f"Processo {process_id} concluído: {result.final_result}")
             return result
@@ -229,7 +228,7 @@ class BugFinderSystem:
             )
             return process
     
-    async def process_log_from_json(self, log_data: dict) -> BugFinderProcess:
+    def process_log_from_json(self, log_data: dict) -> BugFinderProcess:
         """
         Processa um log a partir de dados JSON.
         
@@ -257,7 +256,7 @@ class BugFinderSystem:
         # Remove valores None
         metadata = {k: v for k, v in metadata.items() if v is not None}
         
-        return await self.process_log(log_content, **metadata)
+        return self.process_log(log_content, **metadata)
     
     def get_system_status(self) -> dict:
         """Retorna o status atual do sistema"""
@@ -270,7 +269,7 @@ class BugFinderSystem:
         }
 
 
-async def main():
+def main():
     """Função principal do programa"""
     print("🚀 Iniciando Bug Finder System...")
     print_config_summary()
@@ -292,7 +291,7 @@ User ID: user123, Session: sess_abc789, Request: req_xyz456
         print("\n📝 Processando log de exemplo...")
         
         # Processa o log
-        result = await system.process_log(
+        result = system.process_log(
             sample_log,
             level=LogLevel.ERROR,
             source="UserService",
@@ -373,15 +372,15 @@ def run_cli():
     # Modo process
     if args.file:
         with open(args.file, 'r') as f:
-            log_content = f.read()
+            _ = f.read()
     elif args.log:
-        log_content = args.log
+        _ = args.log
     else:
         # Usa log de exemplo
-        log_content = "Sample error log for testing"
+        _ = "Sample error log for testing"
     
     # Executa processamento
-    asyncio.run(main())
+    main()
 
 
 if __name__ == "__main__":
@@ -389,4 +388,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         run_cli()
     else:
-        asyncio.run(main())
+        main()

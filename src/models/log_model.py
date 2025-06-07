@@ -5,10 +5,11 @@ Este modelo padroniza como os logs são estruturados internamente,
 independentemente de como chegam ao sistema (texto, JSON, etc.).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import uuid
 
 class LogLevel(Enum):
     """
@@ -44,7 +45,7 @@ class LogModel:
         request_id (Optional[str]): ID da requisição que causou o erro
         additional_data (Dict[str, Any]): Qualquer informação extra
     """
-     # Campos obrigatórios - todo log deve ter isso
+    # Campos obrigatórios - todo log deve ter isso
     raw_content: str
     timestamp: datetime
     level: LogLevel
@@ -57,6 +58,9 @@ class LogModel:
     user_id: Optional[str] = None
     request_id: Optional[str] = None
     additional_data: Optional[Dict[str, Any]] = None
+    
+    # ID único para o log
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def __post_init__(self):
         """

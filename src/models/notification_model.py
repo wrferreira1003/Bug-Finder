@@ -13,9 +13,11 @@ class NotificationStatus(Enum):
     """Status possíveis da notificação"""
     PENDING = "pending"
     SENDING = "sending"
-    SENT = "sent"
+    SUCCESS = "success"  # Renamed from SENT for consistency
     FAILED = "failed"
     RATE_LIMITED = "rate_limited"
+    DISCORD_ERROR = "discord_error"
+    UNKNOWN_ERROR = "unknown_error"
 
 
 class NotificationType(Enum):
@@ -44,7 +46,7 @@ class DiscordEmbed:
     timestamp: Optional[str] = None
     
     # Campos do embed
-    fields: List[Dict[str, Any]] = None
+    fields: Optional[List[Dict[str, Any]]] = None
     
     # Footer e thumbnail
     footer_text: Optional[str] = None
@@ -93,11 +95,11 @@ class DiscordEmbed:
 class DiscordMessage:
     """Estrutura de uma mensagem do Discord"""
     content: Optional[str] = None
-    embeds: List[DiscordEmbed] = None
+    embeds: Optional[List[DiscordEmbed]] = None
     
     # Configurações de menção
-    mentions: List[str] = None  # IDs de usuários para mencionar
-    role_mentions: List[str] = None  # IDs de roles para mencionar
+    mentions: Optional[List[str]] = None  # IDs de usuários para mencionar
+    role_mentions: Optional[List[str]] = None  # IDs de roles para mencionar
     
     # Configurações avançadas
     tts: bool = False
@@ -134,7 +136,7 @@ class DiscordMessage:
             payload["embeds"] = [embed.to_discord_format() for embed in self.embeds]
         
         if self.tts:
-            payload["tts"] = self.tts
+            payload["tts"] = True
         
         if self.allowed_mentions:
             payload["allowed_mentions"] = self.allowed_mentions
@@ -159,11 +161,19 @@ class NotificationResult:
     """Resultado completo do envio de notificação"""
     # Status da operação
     status: NotificationStatus
-    success: bool
+    success: bool = False
     
-    # Dados da notificação
-    notification_type: NotificationType
-    priority: NotificationPriority
+    # Dados da notificação - campos opcionais para compatibility
+    notification_type: Optional[NotificationType] = None
+    priority: Optional[NotificationPriority] = None
+    
+    # Compatibility fields for existing agent code
+    issue_creation_id: Optional[str] = None
+    github_issue_url: Optional[str] = None
+    discord_message_id: Optional[str] = None
+    discord_channel: Optional[str] = None
+    message: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
     
     # Dados do Discord
     channel_id: Optional[str] = None
@@ -171,11 +181,11 @@ class NotificationResult:
     webhook_url: Optional[str] = None
     
     # Histórico de tentativas
-    attempts: List[NotificationAttempt] = None
+    attempts: Optional[List[NotificationAttempt]] = None
     
     # Metadados
     notifier_agent: str = "IssueNotificatorAgent"
-    notification_timestamp: str = None
+    notification_timestamp: Optional[str] = None
     total_attempts: int = 0
     
     # Dados da mensagem enviada
@@ -185,13 +195,14 @@ class NotificationResult:
     # Informações de erro
     error_type: Optional[str] = None
     error_message: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.attempts is None:
             self.attempts = []
         if self.notification_timestamp is None:
             self.notification_timestamp = datetime.now().isoformat()
-        self.success = self.status == NotificationStatus.SENT
+        self.success = self.status == NotificationStatus.SUCCESS
     
     def add_attempt(self, attempt: NotificationAttempt):
         """Adiciona uma nova tentativa ao histórico"""
@@ -199,7 +210,7 @@ class NotificationResult:
         self.total_attempts = len(self.attempts)
         self.status = attempt.status
         
-        if attempt.status == NotificationStatus.SENT:
+        if attempt.status == NotificationStatus.SUCCESS:
             self.success = True
         elif attempt.status == NotificationStatus.FAILED:
             self.error_message = attempt.error_message
@@ -230,8 +241,8 @@ class NotificationTemplate:
     priority: NotificationPriority = NotificationPriority.MEDIUM
     
     # Configurações de menção
-    mention_roles: List[str] = None
-    mention_users: List[str] = None
+    mention_roles: Optional[List[str]] = None
+    mention_users: Optional[List[str]] = None
     
     def __post_init__(self):
         if self.mention_roles is None:
@@ -280,7 +291,7 @@ class NotificationConfig:
     retry_delay_seconds: int = 30
     
     # Templates de notificação
-    templates: Dict[NotificationType, NotificationTemplate] = None
+    templates: Optional[Dict[NotificationType, NotificationTemplate]] = None
     
     # Configurações de rate limiting
     respect_rate_limits: bool = True
@@ -320,7 +331,7 @@ class NotificationMetrics:
     average_send_time: float = 0.0
     
     # Métricas por tipo
-    notifications_by_type: Dict[NotificationType, int] = None
+    notifications_by_type: Optional[Dict[NotificationType, int]] = None
     
     def __post_init__(self):
         if self.notifications_by_type is None:

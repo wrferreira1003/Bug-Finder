@@ -16,6 +16,7 @@ class CreationStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     RATE_LIMITED = "rate_limited"
+    GITHUB_ERROR = "github_error"
 
 
 class IssueState(Enum):
@@ -41,8 +42,8 @@ class GitHubIssueData:
     repository_full_name: str
     
     # Metadados adicionais
-    labels: List[str] = None
-    assignees: List[str] = None
+    labels: Optional[List[str]] = None
+    assignees: Optional[List[str]] = None
     milestone: Optional[str] = None
     
     def __post_init__(self):
@@ -72,13 +73,19 @@ class IssueCreationResult:
     
     # Dados da issue (se criada com sucesso)
     github_data: Optional[GitHubIssueData] = None
+    github_issue: Optional[GitHubIssueData] = None  # Compatibility alias
+    
+    # Compatibility fields for existing agent code
+    issue_draft_id: Optional[str] = None
+    created_at: Optional[str] = None
+    message: Optional[str] = None
     
     # Histórico de tentativas
-    attempts: List[CreationAttempt] = None
+    attempts: Optional[List[CreationAttempt]] = None
     
     # Metadados do processo
     creator_agent: str = "IssueCreatorAgent"
-    creation_timestamp: str = None
+    creation_timestamp: Optional[str] = None
     total_attempts: int = 0
     
     # Informações de erro (se houver)
@@ -89,7 +96,7 @@ class IssueCreationResult:
     # Dados originais da issue
     original_title: str = ""
     original_body: str = ""
-    original_labels: List[str] = None
+    original_labels: Optional[List[str]] = None
     
     def __post_init__(self):
         if self.attempts is None:
@@ -98,6 +105,10 @@ class IssueCreationResult:
             self.original_labels = []
         if self.creation_timestamp is None:
             self.creation_timestamp = datetime.now().isoformat()
+        if self.created_at is None:
+            self.created_at = self.creation_timestamp
+        if self.github_issue is None:
+            self.github_issue = self.github_data
         self.success = self.status == CreationStatus.SUCCESS
     
     def add_attempt(self, attempt: CreationAttempt):
@@ -145,7 +156,7 @@ class CreationConfig:
     retry_delay_seconds: int = 60
     
     # Labels padrão
-    default_labels: List[str] = None
+    default_labels: Optional[List[str]] = None
     
     # Template de issue
     issue_template: Optional[str] = None

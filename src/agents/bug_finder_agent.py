@@ -14,12 +14,10 @@ Este é o agente principal que atua como "maestro",
 conduzindo a orquestra de agentes especializados em harmonia.
 """
 
-import json
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, Union
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass
 
 from ..models.log_model import LogModel
 from ..models.bug_analysis import BugAnalysis
@@ -27,7 +25,7 @@ from ..models.issue_model import IssueModel
 from ..models.review_model import IssueReview
 from ..models.creation_model import IssueCreationResult, CreationStatus
 from ..models.notification_model import NotificationResult, NotificationStatus
-from ..models.process_model import ProcessResult, ProcessStatus, ProcessStep
+from ..models.process_model import BugFinderProcess, ProcessResult, ProcessStatus, ProcessStep
 
 from .log_receiver_agent import LogReceiverAgent
 from .bug_analyser_agent import BugAnalyserAgent
@@ -112,7 +110,7 @@ class BugFinderAgent:
             'average_processing_time': 0.0
         }
     
-    def process_log(self, raw_log: Union[str, Dict[str, Any]]) -> ProcessResult:
+    def process_log(self, raw_log: Union[str, Dict[str, Any]]) -> BugFinderProcess:
         """
         Processa um log completo através de todo o pipeline.
         
@@ -127,93 +125,91 @@ class BugFinderAgent:
         
         self.logger.info(f"Iniciando processamento completo: {process_id}")
         
-        # Inicializa resultado do processo
-        process_result = ProcessResult(
+        # Inicializa o processo
+        process = BugFinderProcess(
             process_id=process_id,
-            status=ProcessStatus.RUNNING,
-            started_at=process_start_time.isoformat(),
-            steps_completed=[],
-            current_phase=ProcessPhase.RECEIVING,
-            raw_log=raw_log
+            start_time=process_start_time.isoformat()
         )
         
         try:
             # Fase 1: Recepção e estruturação do log
-            log_entry = self._execute_log_reception(raw_log, process_result)
+            log_entry = self._execute_log_reception(raw_log, process)
             if not log_entry:
-                return self._finalize_process_failure(process_result, "Falha na recepção do log")
+                return self._finalize_process_failure(process, "Falha na recepção do log")
             
             # Fase 2: Análise do bug
-            bug_analysis = self._execute_bug_analysis(log_entry, process_result)
+            bug_analysis = self._execute_bug_analysis(log_entry, process)
             if not bug_analysis:
-                return self._finalize_process_failure(process_result, "Falha na análise do bug")
+                return self._finalize_process_failure(process, "Falha na análise do bug")
             
             # Verifica se deve continuar processamento
             if not self.bug_analyser.should_continue_processing(bug_analysis):
-                return self._finalize_process_skip(process_result, "Bug não requer criação de issue", bug_analysis)
+                return self._finalize_process_skip(process, "Bug não requer criação de issue", bug_analysis)
             
             # Fase 3: Criação do rascunho
-            issue_draft = self._execute_issue_drafting(log_entry, bug_analysis, process_result)
+            issue_draft = self._execute_issue_drafting(log_entry, bug_analysis, process)
             if not issue_draft:
-                return self._finalize_process_failure(process_result, "Falha na criação do rascunho")
+                return self._finalize_process_failure(process, "Falha na criação do rascunho")
             
             # Fase 4: Revisão e refinamento (loop)
-            final_draft = self._execute_review_refinement_loop(issue_draft, process_result)
+            final_draft = self._execute_review_refinement_loop(issue_draft, process)
             if not final_draft:
-                return self._finalize_process_failure(process_result, "Falha no processo de revisão/refinamento")
+                return self._finalize_process_failure(process, "Falha no processo de revisão/refinamento")
             
             # Fase 5: Criação da issue no GitHub
-            creation_result = self._execute_issue_creation(final_draft, process_result)
+            creation_result = self._execute_issue_creation(final_draft, process)
             if not creation_result or creation_result.status != CreationStatus.SUCCESS:
-                return self._finalize_process_failure(process_result, "Falha na criação da issue no GitHub")
+                return self._finalize_process_failure(process, "Falha na criação da issue no GitHub")
             
             # Fase 6: Notificação no Discord
-            notification_result = self._execute_notification(creation_result, final_draft, process_result)
+            notification_result = self._execute_notification(creation_result, final_draft, process)
             
             # Finalização do processo
-            return self._finalize_process_success(process_result, creation_result, notification_result)
+            return self._finalize_process_success(process, creation_result, notification_result)
             
         except Exception as e:
             self.logger.error(f"Erro crítico durante processamento: {str(e)}")
             self.metrics['errors_encountered'] += 1
-            return self._finalize_process_failure(process_result, f"Erro crítico: {str(e)}")
+            return self._finalize_process_failure(process, f"Erro crítico: {str(e)}")
         
         finally:
             # Atualiza métricas
             self._update_processing_metrics(process_start_time)
     
-    def _execute_log_reception(self, raw_log: Union[str, Dict[str, Any]], process_result: ProcessResult) -> Optional[LogModel]:
+    def _execute_log_reception(self, raw_log: Union[str, Dict[str, Any]], process: BugFinderProcess) -> Optional[LogModel]:
         """
         Executa fase de recepção e estruturação do log.
         """
         try:
             self.logger.info("Executando recepção do log")
-            process_result.current_phase = ProcessPhase.RECEIVING
+            process.current_phase = ProcessPhase.RECEIVING
             
             log_entry = self.log_receiver.receive_log(raw_log)
             
             if log_entry:
                 step = ProcessStep(
-                    phase=ProcessPhase.RECEIVING,
-                    status=ProcessStatus.SUCCESS,
-                    started_at=datetime.now().isoformat(),
-                    completed_at=datetime.now().isoformat(),
-                    agent='LogReceiverAgent',
-                    result={'log_entry_id': log_entry.id}
+                    step_name="receive_log",
+                    agent_name='LogReceiverAgent',
+                    status=ProcessStatus.LOG_RECEIVED,
+                    start_time=datetime.now().isoformat(),
+                    end_time=datetime.now().isoformat(),
+                    success=True,
+                    metadata={'log_entry_id': log_entry.id}
                 )
-                process_result.steps_completed.append(step)
-                process_result.log_entry = log_entry
+                process.add_step(step)
+                process.log_entry = log_entry
                 self.logger.info(f"Log recebido e estruturado: {log_entry.id}")
             else:
                 step = ProcessStep(
-                    phase=ProcessPhase.RECEIVING,
+                    step_name="receive_log",
+                    agent_name='LogReceiverAgent',
                     status=ProcessStatus.FAILED,
-                    started_at=datetime.now().isoformat(),
-                    completed_at=datetime.now().isoformat(),
-                    agent='LogReceiverAgent',
-                    error='Log inválido ou malformado'
+                    start_time=datetime.now().isoformat(),
+                    end_time=datetime.now().isoformat(),
+                    success=False,
+                    error_message='Log inválido ou malformado'
                 )
-                process_result.steps_completed.append(step)
+                process.add_step(step)
                 self.logger.error("Falha na recepção do log")
             
             return log_entry
@@ -228,16 +224,16 @@ class BugFinderAgent:
                 agent='LogReceiverAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
-    def _execute_bug_analysis(self, log_entry: LogModel, process_result: ProcessResult) -> Optional[BugAnalysis]:
+    def _execute_bug_analysis(self, log_entry: LogModel, process: BugFinderProcess) -> Optional[BugAnalysis]:
         """
         Executa fase de análise do bug.
         """
         try:
             self.logger.info("Executando análise do bug")
-            process_result.current_phase = ProcessPhase.ANALYZING
+            process.current_phase = ProcessPhase.ANALYZING
             
             bug_analysis = self.bug_analyser.analyze_log(log_entry)
             
@@ -254,8 +250,8 @@ class BugFinderAgent:
                     'confidence': bug_analysis.confidence_score
                 }
             )
-            process_result.steps_completed.append(step)
-            process_result.bug_analysis = bug_analysis
+            process.steps_completed.append(step)
+            process.bug_analysis = bug_analysis
             
             self.logger.info(f"Análise concluída - É bug: {bug_analysis.is_bug}, Criticidade: {bug_analysis.criticality}")
             
@@ -274,16 +270,16 @@ class BugFinderAgent:
                 agent='BugAnalyserAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
-    def _execute_issue_drafting(self, log_entry: LogModel, bug_analysis: BugAnalysis, process_result: ProcessResult) -> Optional[IssueModel]:
+    def _execute_issue_drafting(self, log_entry: LogModel, bug_analysis: BugAnalysis, process: BugFinderProcess) -> Optional[IssueModel]:
         """
         Executa fase de criação do rascunho da issue.
         """
         try:
             self.logger.info("Executando criação do rascunho")
-            process_result.current_phase = ProcessPhase.DRAFTING
+            process.current_phase = ProcessPhase.DRAFTING
             
             issue_draft = self.issue_drafter.create_issue_draft(log_entry, bug_analysis)
             
@@ -300,8 +296,8 @@ class BugFinderAgent:
                     'priority': issue_draft.priority.value
                 }
             )
-            process_result.steps_completed.append(step)
-            process_result.issue_draft = issue_draft
+            process.steps_completed.append(step)
+            process.issue_draft = issue_draft
             
             self.logger.info(f"Rascunho criado: {issue_draft.title[:50]}...")
             
@@ -317,10 +313,10 @@ class BugFinderAgent:
                 agent='IssueDrafterAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
-    def _execute_review_refinement_loop(self, initial_draft: IssueModel, process_result: ProcessResult) -> Optional[IssueModel]:
+    def _execute_review_refinement_loop(self, initial_draft: IssueModel, process: BugFinderProcess) -> Optional[IssueModel]:
         """
         Executa loop de revisão e refinamento até aprovação ou limite de iterações.
         """
@@ -332,7 +328,7 @@ class BugFinderAgent:
             self.logger.info(f"Iniciando iteração {iteration} de revisão/refinamento")
             
             # Fase de revisão
-            review_result = self._execute_issue_review(current_draft, process_result, iteration)
+            review_result = self._execute_issue_review(current_draft, process, iteration)
             if not review_result:
                 return None
             
@@ -347,7 +343,7 @@ class BugFinderAgent:
                 return current_draft
             
             # Fase de refinamento
-            refined_draft = self._execute_issue_refinement(current_draft, review_result, process_result, iteration)
+            refined_draft = self._execute_issue_refinement(current_draft, review_result, process, iteration)
             if not refined_draft:
                 return None
             
@@ -356,13 +352,13 @@ class BugFinderAgent:
         
         return current_draft
     
-    def _execute_issue_review(self, issue_draft: IssueModel, process_result: ProcessResult, iteration: int) -> Optional[IssueReview]:
+    def _execute_issue_review(self, issue_draft: IssueModel, process: BugFinderProcess, iteration: int) -> Optional[IssueReview]:
         """
         Executa fase de revisão da issue.
         """
         try:
             self.logger.info(f"Executando revisão da issue (iteração {iteration})")
-            process_result.current_phase = ProcessPhase.REVIEWING
+            process.current_phase = ProcessPhase.REVIEWING
             
             review_result = self.issue_reviewer.review_issue_draft(issue_draft)
             
@@ -380,7 +376,7 @@ class BugFinderAgent:
                     'iteration': iteration
                 }
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             
             self.logger.info(f"Revisão concluída - Resultado: {review_result.result}, Score: {review_result.overall_score}")
             
@@ -396,17 +392,17 @@ class BugFinderAgent:
                 agent='IssueReviewerAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
     def _execute_issue_refinement(self, issue_draft: IssueModel, review_result: IssueReview, 
-                                 process_result: ProcessResult, iteration: int) -> Optional[IssueModel]:
+                                 process: BugFinderProcess, iteration: int) -> Optional[IssueModel]:
         """
         Executa fase de refinamento da issue.
         """
         try:
             self.logger.info(f"Executando refinamento da issue (iteração {iteration})")
-            process_result.current_phase = ProcessPhase.REFINING
+            process.current_phase = ProcessPhase.REFINING
             
             refined_draft = self.issue_refiner.refine_issue_draft(issue_draft, review_result)
             
@@ -426,7 +422,7 @@ class BugFinderAgent:
                     'improvements': improvement_summary['improvements_applied']
                 }
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             
             self.logger.info(f"Refinamento concluído - {improvement_summary['total_changes']} melhorias aplicadas")
             
@@ -442,16 +438,16 @@ class BugFinderAgent:
                 agent='IssueRefinerAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
-    def _execute_issue_creation(self, issue_draft: IssueModel, process_result: ProcessResult) -> Optional[IssueCreationResult]:
+    def _execute_issue_creation(self, issue_draft: IssueModel, process: BugFinderProcess) -> Optional[IssueCreationResult]:
         """
         Executa fase de criação da issue no GitHub.
         """
         try:
             self.logger.info("Executando criação da issue no GitHub")
-            process_result.current_phase = ProcessPhase.CREATING
+            process.current_phase = ProcessPhase.CREATING
             
             creation_result = self.issue_creator.create_issue(issue_draft)
             
@@ -470,8 +466,8 @@ class BugFinderAgent:
                 } if creation_result.status == CreationStatus.SUCCESS else None,
                 error=creation_result.message if creation_result.status != CreationStatus.SUCCESS else None
             )
-            process_result.steps_completed.append(step)
-            process_result.creation_result = creation_result
+            process.steps_completed.append(step)
+            process.creation_result = creation_result
             
             if creation_result.status == CreationStatus.SUCCESS:
                 self.metrics['issues_created'] += 1
@@ -491,17 +487,17 @@ class BugFinderAgent:
                 agent='IssueCreatorAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
     def _execute_notification(self, creation_result: IssueCreationResult, issue_draft: IssueModel, 
-                            process_result: ProcessResult) -> Optional[NotificationResult]:
+                            process: BugFinderProcess) -> Optional[NotificationResult]:
         """
         Executa fase de notificação no Discord.
         """
         try:
             self.logger.info("Executando notificação no Discord")
-            process_result.current_phase = ProcessPhase.NOTIFYING
+            process.current_phase = ProcessPhase.NOTIFYING
             
             if creation_result.status == CreationStatus.SUCCESS:
                 notification_result = self.issue_notificator.notify_issue_created(creation_result, issue_draft)
@@ -523,8 +519,8 @@ class BugFinderAgent:
                 } if notification_result.status == NotificationStatus.SUCCESS else None,
                 error=notification_result.message if notification_result.status != NotificationStatus.SUCCESS else None
             )
-            process_result.steps_completed.append(step)
-            process_result.notification_result = notification_result
+            process.steps_completed.append(step)
+            process.notification_result = notification_result
             
             if notification_result.status == NotificationStatus.SUCCESS:
                 self.metrics['notifications_sent'] += 1
@@ -544,66 +540,66 @@ class BugFinderAgent:
                 agent='IssueNotificatorAgent',
                 error=str(e)
             )
-            process_result.steps_completed.append(step)
+            process.steps_completed.append(step)
             return None
     
-    def _finalize_process_success(self, process_result: ProcessResult, creation_result: IssueCreationResult, 
-                                 notification_result: Optional[NotificationResult]) -> ProcessResult:
+    def _finalize_process_success(self, process: BugFinderProcess, creation_result: IssueCreationResult, 
+                                 notification_result: Optional[NotificationResult]) -> BugFinderProcess:
         """
         Finaliza processo com sucesso.
         """
-        process_result.status = ProcessStatus.SUCCESS
-        process_result.current_phase = ProcessPhase.COMPLETED
-        process_result.completed_at = datetime.now().isoformat()
-        process_result.github_issue_url = self.issue_creator.get_issue_url(creation_result)
+        process.status = ProcessStatus.SUCCESS
+        process.current_phase = ProcessPhase.COMPLETED
+        process.completed_at = datetime.now().isoformat()
+        process.github_issue_url = self.issue_creator.get_issue_url(creation_result)
         
         # Calcula tempo total de processamento
-        start_time = datetime.fromisoformat(process_result.started_at)
+        start_time = datetime.fromisoformat(process.start_time)
         end_time = datetime.now()
-        process_result.processing_time_seconds = (end_time - start_time).total_seconds()
+        process.processing_time_seconds = (end_time - start_time).total_seconds()
         
-        self.logger.info(f"Processo finalizado com sucesso: {process_result.process_id}")
-        self.logger.info(f"Issue criada: {process_result.github_issue_url}")
-        self.logger.info(f"Tempo de processamento: {process_result.processing_time_seconds:.2f}s")
+        self.logger.info(f"Processo finalizado com sucesso: {process.process_id}")
+        self.logger.info(f"Issue criada: {process.github_issue_url}")
+        self.logger.info(f"Tempo de processamento: {process.processing_time_seconds:.2f}s")
         
-        return process_result
+        return process
     
-    def _finalize_process_failure(self, process_result: ProcessResult, error_message: str) -> ProcessResult:
+    def _finalize_process_failure(self, process: BugFinderProcess, error_message: str) -> BugFinderProcess:
         """
         Finaliza processo com falha.
         """
-        process_result.status = ProcessStatus.FAILED
-        process_result.current_phase = ProcessPhase.FAILED
-        process_result.completed_at = datetime.now().isoformat()
-        process_result.error_message = error_message
+        process.status = ProcessStatus.FAILED
+        process.current_phase = ProcessPhase.FAILED
+        process.completed_at = datetime.now().isoformat()
+        process.error_message = error_message
         
         # Calcula tempo até falha
-        start_time = datetime.fromisoformat(process_result.started_at)
+        start_time = datetime.fromisoformat(process.start_time)
         end_time = datetime.now()
-        process_result.processing_time_seconds = (end_time - start_time).total_seconds()
+        process.processing_time_seconds = (end_time - start_time).total_seconds()
         
-        self.logger.error(f"Processo falhou: {process_result.process_id} - {error_message}")
+        self.logger.error(f"Processo falhou: {process.process_id} - {error_message}")
         
-        return process_result
+        return process
     
-    def _finalize_process_skip(self, process_result: ProcessResult, skip_reason: str, bug_analysis: BugAnalysis) -> ProcessResult:
+    def _finalize_process_skip(self, process: BugFinderProcess, skip_reason: str, bug_analysis: BugAnalysis) -> BugFinderProcess:
         """
         Finaliza processo que foi pulado (não é bug crítico).
         """
-        process_result.status = ProcessStatus.SKIPPED
-        process_result.current_phase = ProcessPhase.COMPLETED
-        process_result.completed_at = datetime.now().isoformat()
-        process_result.skip_reason = skip_reason
+        process.status = ProcessStatus.SKIPPED
+        process.current_phase = ProcessPhase.COMPLETED
+        process.completed_at = datetime.now().isoformat()
+        process.skip_reason = skip_reason
         
         # Calcula tempo de processamento
-        start_time = datetime.fromisoformat(process_result.started_at)
+        start_time = datetime.fromisoformat(process.start_time)
         end_time = datetime.now()
-        process_result.processing_time_seconds = (end_time - start_time).total_seconds()
+        process.processing_time_seconds = (end_time - start_time).total_seconds()
         
-        self.logger.info(f"Processo pulado: {process_result.process_id} - {skip_reason}")
+        self.logger.info(f"Processo pulado: {process.process_id} - {skip_reason}")
         self.logger.info(f"Análise: É bug: {bug_analysis.is_bug}, Criticidade: {bug_analysis.criticality}")
         
-        return process_result
+        return process
     
     def _update_processing_metrics(self, start_time: datetime):
         """
@@ -685,6 +681,54 @@ class BugFinderAgent:
             'process_phases': [phase.value for phase in ProcessPhase],
             'process_config': self.process_config
         }
+
+    def process_bug_report(self, process: 'BugFinderProcess') -> 'BugFinderProcess':
+        """
+        Processa um relatório de bug a partir de um processo já inicializado.
+        
+        Este método serve como interface para o processamento de processos 
+        já inicializados, delegando para o método process_log.
+        
+        Args:
+            process: Processo já inicializado com dados do log
+            
+        Returns:
+            BugFinderProcess: Processo atualizado com o resultado
+        """
+        try:
+            self.logger.info(f"Processando relatório de bug para processo {process.process_id}")
+            
+            # Extrai o log do processo
+            if not process.context or not process.context.original_log:
+                process.complete_process(
+                    ProcessResult.FAILED,
+                    "Processo sem log original"
+                )
+                return process
+            
+            # Usa o método principal de processamento
+            log_entry = process.context.original_log
+            raw_log = log_entry.raw_content
+            
+            # Processa o log e atualiza o processo
+            result = self.process_log(raw_log)
+            
+            # Transfere resultados para o processo original
+            process.current_status = result.status
+            process.final_result = result.final_result
+            process.steps_completed = result.steps_completed
+            process.end_time = result.end_time or datetime.now().isoformat()
+            process.error_message = result.error_message
+            
+            return process
+            
+        except Exception as e:
+            self.logger.error(f"Erro ao processar relatório de bug: {str(e)}")
+            process.complete_process(
+                ProcessResult.SYSTEM_ERROR,
+                f"Erro inesperado: {str(e)}"
+            )
+            return process
 
 
 # Exemplo de uso e testes

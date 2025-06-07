@@ -16,13 +16,13 @@ sobre novos bugs detectados de forma clara e organizada.
 
 import json
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from datetime import datetime
 
 from ..models.issue_model import IssueModel, IssuePriority
-from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
+from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
 from ..models.notification_model import NotificationResult, NotificationStatus, DiscordMessage
-from ..tools.discord_tool import DiscordTool, DiscordError
+from ..tools.discord_tool import DiscordTool, DiscordAPIError
 from ..config.settings import get_settings
 
 
@@ -114,7 +114,7 @@ class IssueNotificatorAgent:
             
             return notification_result
             
-        except DiscordError as e:
+        except DiscordAPIError as e:
             self.logger.error(f"Erro do Discord: {str(e)}")
             return self._create_discord_error_result(creation_result, issue_draft, e)
         
@@ -358,7 +358,7 @@ class IssueNotificatorAgent:
         Envia notificação para o Discord.
         """
         if not channel:
-            raise DiscordError("Canal não configurado")
+            raise DiscordAPIError("Canal não configurado")
         
         return self.discord_tool.send_message(
             channel=channel,
@@ -413,8 +413,9 @@ class IssueNotificatorAgent:
             }
         )
     
-    def _create_discord_error_result(self, creation_result: IssueCreationResult,
-                                   issue_draft: IssueModel, error: DiscordError) -> NotificationResult:
+    def _create_discord_error_result(
+        self, creation_result: IssueCreationResult, issue_draft: IssueModel, error: DiscordAPIError
+    ) -> NotificationResult:
         """
         Cria resultado de erro do Discord.
         """
@@ -528,7 +529,7 @@ class IssueNotificatorAgent:
 # Exemplo de uso e testes
 if __name__ == "__main__":
     from ..models.issue_model import IssueModel, IssuePriority
-    from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
+    from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
     from ..tools.discord_tool import MockDiscordTool
     
     # Configuração básica de logging para testes
@@ -539,7 +540,7 @@ if __name__ == "__main__":
     agent = IssueNotificatorAgent(mock_discord)
     
     # Teste: Notificação de issue criada com sucesso
-    test_github_issue = GitHubIssue(
+    test_github_issue = GitHubIssueData(
         number=123,
         title="Fix database connection timeout in UserService",
         url="https://github.com/empresa/repo/issues/123",
@@ -603,5 +604,5 @@ Users cannot access the application.
     print(f"Mensagem: {failure_notification.message}")
     
     # Info do agente
-    print(f"\nInfo do Agente:")
+    print("\nInfo do Agente:")
     print(json.dumps(agent.get_agent_info(), indent=2))

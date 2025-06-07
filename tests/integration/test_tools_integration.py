@@ -1,9 +1,8 @@
 import pytest
-import os
 from unittest.mock import Mock, patch
 from src.tools.github_tool import GitHubTool, GitHubConfig
 from src.tools.discord_tool import DiscordTool, DiscordConfig
-from src.models.issue_model import Issue
+from src.models.issue_model import IssueModel
 
 class TestGitHubToolIntegration:
     """Testes de integração para a ferramenta GitHub"""
@@ -24,7 +23,7 @@ class TestGitHubToolIntegration:
     @pytest.fixture
     def sample_issue(self):
         """Issue de exemplo para testes"""
-        return Issue(
+        return IssueModel(
             title="Bug de Teste",
             description="Descrição do bug de teste",
             labels=["bug", "high-priority"],
@@ -195,7 +194,7 @@ class TestToolsInteraction:
         mock_discord.return_value = mock_discord_response
         
         # Criar issue
-        sample_issue = Issue(
+        sample_issue = IssueModel(
             title="Bug Completo",
             description="Teste de fluxo completo",
             labels=["bug"]

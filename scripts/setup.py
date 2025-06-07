@@ -6,9 +6,8 @@ Prepara o ambiente, valida dependências e configura credenciais.
 import os
 import sys
 import subprocess
-import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 class BugFinderSetup:
     """Classe para configuração inicial do Bug Finder"""
@@ -250,14 +249,15 @@ class BugFinderSetup:
             
             # Testa importação de configurações
             from src.config import get_settings
+            _ = get_settings  # valida import
             print("   ✅ Importação de configurações")
             
             # Testa importação de modelos
-            from src.models import LogEntry, LogLevel
+            from src.models import LogModel, LogLevel
             print("   ✅ Importação de modelos")
             
             # Testa criação de log de exemplo
-            log = LogEntry(
+            _ = LogModel(
                 message="Teste de configuração",
                 level=LogLevel.INFO,
                 timestamp="2024-06-07T12:00:00Z"

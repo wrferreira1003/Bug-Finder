@@ -12,7 +12,7 @@ from datetime import datetime
 # Adiciona o diretório src ao path para importar nossos módulos
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from models import (
+from src.models import (
     LogModel, LogLevel, create_log_from_text,
     BugAnalysis, BugSeverity, BugCategory, create_quick_bug_analysis,
     IssueModel, IssueStatus, IssuePriority, create_issue_from_analysis

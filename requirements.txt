@@ -1,0 +1,28 @@
+
+# Dependências do Bug Finder
+
+# Framework de Agentes do Google
+google-ai-agentstudio>=0.1.0
+
+# Modelo Gemini
+google-generativeai>=0.8.0
+
+# Para trabalhar com APIs REST
+requests>=2.31.0
+
+# Para trabalhar com dados JSON
+pydantic>=2.5.0
+
+# Para variáveis de ambiente
+python-dotenv>=1.0.0
+
+# Para testes
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+
+# Para formatação de código
+black>=23.0.0
+isort>=5.12.0
+
+# Para desenvolvimento
+ipython>=8.17.0  # Terminal interativo melhorado

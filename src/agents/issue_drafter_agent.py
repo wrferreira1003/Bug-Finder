@@ -336,14 +336,8 @@ This issue was automatically detected and requires investigation.
         except KeyError:
             priority = IssuePriority.MEDIUM
         
-        # Converte labels para enums
-        labels = []
-        for label_str in content.get('labels', []):
-            try:
-                labels.append(IssueLabel[label_str.upper().replace('-', '_')])
-            except KeyError:
-                # Para labels customizadas, adiciona como string
-                labels.append(label_str)
+        # Labels são mantidos como strings
+        labels = list(content.get('labels', []))
         
         return IssueModel(
             title=content['title'],

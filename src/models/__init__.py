@@ -1,25 +1,18 @@
 """
 Módulo de modelos de dados do Bug Finder.
-
-Este módulo contém todas as estruturas de dados que os agentes
-usam para se comunicar e representar informações no sistema.
-
-Importações disponíveis:
-- LogModel, LogLevel: Para representar logs de erro
-- BugAnalysis, BugSeverity, BugCategory: Para análises de bugs  
-- IssueModel, IssueStatus, IssuePriority: Para issues do GitHub
+Centraliza todas as estruturas de dados utilizadas pelos agentes.
 """
 
-# Importações dos modelos principais
+# Modelos básicos
 from .log_model import (
-    LogModel,
     LogLevel,
+    LogModel,
     create_log_from_text,
     is_log_worth_analyzing
 )
 
 from .bug_analysis import (
-    BugAnalysis, 
+    BugAnalysis,
     BugSeverity,
     BugCategory,
     create_negative_analysis,
@@ -28,34 +21,103 @@ from .bug_analysis import (
 
 from .issue_model import (
     IssueModel,
-    IssueStatus, 
     IssuePriority,
+    IssueStatus,
     create_basic_issue,
     create_issue_from_analysis
 )
 
-# Lista de exportações públicas
+# Modelos de processo
+from .review_model import (
+    ReviewStatus,
+    ReviewCriteria,
+    ReviewFeedback,
+    IssueReview,
+    ReviewMetrics
+)
+
+from .creation_model import (
+    CreationStatus,
+    IssueState,
+    GitHubIssueData,
+    CreationAttempt,
+    IssueCreationResult,
+    CreationConfig,
+    CreationMetrics
+)
+
+from .notification_model import (
+    NotificationStatus,
+    NotificationType,
+    NotificationPriority,
+    DiscordEmbed,
+    DiscordMessage,
+    NotificationAttempt,
+    NotificationResult,
+    NotificationTemplate,
+    NotificationConfig,
+    NotificationMetrics
+)
+
+from .process_model import (
+    ProcessStatus,
+    ProcessResult,
+    ProcessStep,
+    ProcessContext,
+    BugFinderProcess,
+    ProcessConfig,
+    ProcessMetrics
+)
+
+# Lista de todas as classes exportadas
 __all__ = [
-    # Log Model
-    'LogModel',
-    'LogLevel', 
-    'create_log_from_text',
-    'is_log_worth_analyzing',
+    # Modelos básicos
+    "LogLevel",
+    "LogModel",
+    "create_log_from_text",
+    "is_log_worth_analyzing",
+    "BugAnalysis",
+    "BugSeverity",
+    "BugCategory", 
+    "create_negative_analysis",
+    "create_quick_bug_analysis",
+    "IssueModel",
+    "IssuePriority", 
+    "IssueStatus",
+    "create_basic_issue",
+    "create_issue_from_analysis",
     
-    # Bug Analysis
-    'BugAnalysis',
-    'BugSeverity',
-    'BugCategory',
-    'create_negative_analysis', 
-    'create_quick_bug_analysis',
-    
-    # Issue Model
-    'IssueModel',
-    'IssueStatus',
-    'IssuePriority',
-    'create_basic_issue',
-    'create_issue_from_analysis'
+    # Modelos de processo
+    "ReviewStatus",
+    "ReviewCriteria",
+    "ReviewFeedback",
+    "IssueReview",
+    "ReviewMetrics",
+    "CreationStatus",
+    "IssueState",
+    "GitHubIssueData",
+    "CreationAttempt", 
+    "IssueCreationResult",
+    "CreationConfig",
+    "CreationMetrics",
+    "NotificationStatus",
+    "NotificationType",
+    "NotificationPriority",
+    "DiscordEmbed",
+    "DiscordMessage",
+    "NotificationAttempt",
+    "NotificationResult",
+    "NotificationTemplate",
+    "NotificationConfig", 
+    "NotificationMetrics",
+    "ProcessStatus",
+    "ProcessResult",
+    "ProcessStep",
+    "ProcessContext",
+    "BugFinderProcess",
+    "ProcessConfig",
+    "ProcessMetrics"
 ]
 
-# Versão do módulo de modelos
+# Versão do módulo
 __version__ = "1.0.0"

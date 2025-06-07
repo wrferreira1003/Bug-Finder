@@ -16,12 +16,12 @@ materializar as issues refinadas no GitHub usando a API oficial.
 
 import json
 import logging
-from typing import Dict, Any, Optional, Protocol, List
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ..models.issue_model import IssueModel, IssuePriority
-from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssue
-from ..tools.github_tool import GitHubTool, GitHubError
+from ..models.creation_model import IssueCreationResult, CreationStatus, GitHubIssueData
+from ..tools.github_tool import GitHubTool, GitHubAPIError
 from ..config.settings import get_settings
 
 
@@ -87,7 +87,7 @@ class IssueCreatorAgent:
             
             return creation_result
             
-        except GitHubError as e:
+        except GitHubAPIError as e:
             self.logger.error(f"Erro da API do GitHub: {str(e)}")
             return self._create_github_error_result(issue_draft, e)
         
@@ -195,7 +195,7 @@ class IssueCreatorAgent:
                     body_sections.append(f"- **{key.replace('_', ' ').title()}**: {value}")
         
         # Metadados de criação automática
-        body_sections.append(f"\n---")
+        body_sections.append("\n---")
         body_sections.append(f"*This issue was automatically created by BugFinder on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
         
         return '\n'.join(body_sections)
@@ -235,14 +235,14 @@ class IssueCreatorAgent:
             'validated_data': issue_data
         }
     
-    def _create_github_issue(self, issue_data: Dict[str, Any]) -> GitHubIssue:
+    def _create_github_issue(self, issue_data: Dict[str, Any]) -> GitHubIssueData:
         """
         Cria a issue no GitHub usando a ferramenta.
         """
         repository = self.github_config['default_repository']
         
         if not repository:
-            raise GitHubError("Repositório não configurado")
+            raise GitHubAPIError("Repositório não configurado")
         
         # Usa a ferramenta do GitHub para criar a issue
         return self.github_tool.create_issue(
@@ -254,7 +254,7 @@ class IssueCreatorAgent:
             milestone=issue_data.get('milestone')
         )
     
-    def _configure_issue_metadata(self, github_issue: GitHubIssue, issue_draft: IssueModel):
+    def _configure_issue_metadata(self, github_issue: GitHubIssueData, issue_draft: IssueModel):
         """
         Configura metadados adicionais da issue após criação.
         """
@@ -301,7 +301,7 @@ class IssueCreatorAgent:
         
         return '\n'.join(context_parts) if context_parts else ""
     
-    def _create_success_result(self, issue_draft: IssueModel, github_issue: GitHubIssue) -> IssueCreationResult:
+    def _create_success_result(self, issue_draft: IssueModel, github_issue: GitHubIssueData) -> IssueCreationResult:
         """
         Cria resultado de sucesso.
         """
@@ -335,7 +335,7 @@ class IssueCreatorAgent:
             }
         )
     
-    def _create_github_error_result(self, issue_draft: IssueModel, error: GitHubError) -> IssueCreationResult:
+    def _create_github_error_result(self, issue_draft: IssueModel, error: GitHubAPIError) -> IssueCreationResult:
         """
         Cria resultado de erro do GitHub.
         """
@@ -508,5 +508,5 @@ Users cannot log in or access their profiles during high traffic periods.
         print(f"Erros de validação: {invalid_result.error_details.get('validation_errors', [])}")
     
     # Info do agente
-    print(f"\nInfo do Agente:")
+    print("\nInfo do Agente:")
     print(json.dumps(agent.get_agent_info(), indent=2))

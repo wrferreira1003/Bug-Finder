@@ -1,366 +1,162 @@
-"""
-Modelo para representar notificações enviadas via Discord.
-Define estruturas para mensagens, embeds e resultados de envio.
-"""
-
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
-from enum import Enum
 from datetime import datetime
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+from enum import Enum
+
+from .issue_model import IssueModel
 
 
-class NotificationStatus(Enum):
-    """Status possíveis da notificação"""
-    PENDING = "pending"
-    SENDING = "sending"
-    SUCCESS = "success"  # Renamed from SENT for consistency
-    FAILED = "failed"
-    RATE_LIMITED = "rate_limited"
-    DISCORD_ERROR = "discord_error"
-    UNKNOWN_ERROR = "unknown_error"
+class NotificationChannel(str, Enum):
+    DISCORD = "discord"
+    SLACK = "slack"
+    EMAIL = "email"
+    WEBHOOK = "webhook"
 
 
-class NotificationType(Enum):
-    """Tipos de notificação"""
-    NEW_BUG = "new_bug"
-    CRITICAL_BUG = "critical_bug"
-    BUG_UPDATE = "bug_update"
-    SYSTEM_ALERT = "system_alert"
-
-
-class NotificationPriority(Enum):
-    """Níveis de prioridade da notificação"""
+class NotificationPriority(str, Enum):
     LOW = "low"
-    MEDIUM = "medium"
+    NORMAL = "normal"
     HIGH = "high"
-    CRITICAL = "critical"
+    URGENT = "urgent"
 
 
-@dataclass
-class DiscordEmbed:
-    """Estrutura de um embed do Discord"""
-    title: str
-    description: str
-    color: int = 0xFF0000  # Vermelho por padrão para bugs
-    url: Optional[str] = None
-    timestamp: Optional[str] = None
+class NotificationStatus(str, Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    RETRYING = "retrying"
+
+
+class DiscordNotification(BaseModel):
+    webhook_url: str = Field(..., description="URL do webhook do Discord")
+    content: Optional[str] = Field(None, description="Conteúdo da mensagem")
+    username: Optional[str] = Field("Bug Finder Bot", description="Nome do bot")
+    avatar_url: Optional[str] = Field(None, description="URL do avatar do bot")
     
-    # Campos do embed
-    fields: Optional[List[Dict[str, Any]]] = None
+    # Embed data
+    embed_title: Optional[str] = Field(None, description="Título do embed")
+    embed_description: Optional[str] = Field(None, description="Descrição do embed")
+    embed_color: Optional[int] = Field(None, description="Cor do embed (hex)")
+    embed_fields: List[Dict[str, Any]] = Field(default_factory=list, description="Campos do embed")
     
-    # Footer e thumbnail
-    footer_text: Optional[str] = None
-    footer_icon_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    
-    def __post_init__(self):
-        if self.fields is None:
-            self.fields = []
-        if self.timestamp is None:
-            self.timestamp = datetime.now().isoformat()
-    
-    def add_field(self, name: str, value: str, inline: bool = False):
-        """Adiciona um campo ao embed"""
-        self.fields.append({
+    def add_field(self, name: str, value: str, inline: bool = False) -> None:
+        self.embed_fields.append({
             "name": name,
             "value": value,
             "inline": inline
         })
     
-    def to_discord_format(self) -> Dict[str, Any]:
-        """Converte para formato aceito pelo Discord"""
-        embed_data = {
-            "title": self.title,
-            "description": self.description,
-            "color": self.color,
-            "timestamp": self.timestamp,
-            "fields": self.fields
+    def set_color_by_priority(self, priority: NotificationPriority) -> None:
+        color_map = {
+            NotificationPriority.LOW: 0x00ff00,      # Verde
+            NotificationPriority.NORMAL: 0xffff00,   # Amarelo
+            NotificationPriority.HIGH: 0xff8000,     # Laranja
+            NotificationPriority.URGENT: 0xff0000    # Vermelho
         }
-        
-        if self.url:
-            embed_data["url"] = self.url
-        
-        if self.footer_text:
-            embed_data["footer"] = {"text": self.footer_text}
-            if self.footer_icon_url:
-                embed_data["footer"]["icon_url"] = self.footer_icon_url
-        
-        if self.thumbnail_url:
-            embed_data["thumbnail"] = {"url": self.thumbnail_url}
-        
-        return embed_data
+        self.embed_color = color_map.get(priority, 0x808080)  # Cinza padrão
 
 
-@dataclass
-class DiscordMessage:
-    """Estrutura de uma mensagem do Discord"""
-    content: Optional[str] = None
-    embeds: Optional[List[DiscordEmbed]] = None
+class NotificationModel(BaseModel):
+    id: str = Field(..., description="ID único da notificação")
+    issue_id: str = Field(..., description="ID da issue relacionada")
     
-    # Configurações de menção
-    mentions: Optional[List[str]] = None  # IDs de usuários para mencionar
-    role_mentions: Optional[List[str]] = None  # IDs de roles para mencionar
+    # Configuração da notificação
+    channel: NotificationChannel = Field(..., description="Canal de notificação")
+    priority: NotificationPriority = Field(NotificationPriority.NORMAL, description="Prioridade da notificação")
     
-    # Configurações avançadas
-    tts: bool = False
-    allowed_mentions: Optional[Dict[str, Any]] = None
+    # Conteúdo
+    title: str = Field(..., description="Título da notificação")
+    message: str = Field(..., description="Mensagem da notificação")
+    summary: Optional[str] = Field(None, description="Resumo da notificação")
     
-    def __post_init__(self):
-        if self.embeds is None:
-            self.embeds = []
-        if self.mentions is None:
-            self.mentions = []
-        if self.role_mentions is None:
-            self.role_mentions = []
+    # Dados específicos do canal
+    discord_data: Optional[DiscordNotification] = Field(None, description="Dados específicos do Discord")
     
-    def add_embed(self, embed: DiscordEmbed):
-        """Adiciona um embed à mensagem"""
-        self.embeds.append(embed)
+    # Status e timestamps
+    status: NotificationStatus = Field(NotificationStatus.PENDING, description="Status da notificação")
+    created_at: datetime = Field(default_factory=datetime.now, description="Timestamp de criação")
+    sent_at: Optional[datetime] = Field(None, description="Timestamp de envio")
     
-    def add_mention(self, user_id: str):
-        """Adiciona menção de usuário"""
-        self.mentions.append(user_id)
-        if self.content:
-            self.content += f" <@{user_id}>"
-        else:
-            self.content = f"<@{user_id}>"
+    # Dados de resposta
+    response_data: Optional[Dict[str, Any]] = Field(None, description="Dados de resposta do canal")
+    error_message: Optional[str] = Field(None, description="Mensagem de erro, se houver")
+    retry_count: int = Field(0, description="Número de tentativas de reenvio")
+    max_retries: int = Field(3, description="Máximo de tentativas")
     
-    def to_discord_payload(self) -> Dict[str, Any]:
-        """Converte para payload do Discord webhook"""
-        payload = {}
-        
-        if self.content:
-            payload["content"] = self.content
-        
-        if self.embeds:
-            payload["embeds"] = [embed.to_discord_format() for embed in self.embeds]
-        
-        if self.tts:
-            payload["tts"] = True
-        
-        if self.allowed_mentions:
-            payload["allowed_mentions"] = self.allowed_mentions
-        
-        return payload
-
-
-@dataclass
-class NotificationAttempt:
-    """Registro de uma tentativa de notificação"""
-    attempt_number: int
-    timestamp: str
-    status: NotificationStatus
-    response_code: Optional[int] = None
-    response_data: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    duration_seconds: Optional[float] = None
-
-
-@dataclass
-class NotificationResult:
-    """Resultado completo do envio de notificação"""
-    # Status da operação
-    status: NotificationStatus
-    success: bool = False
+    def mark_as_sent(self, response_data: Optional[Dict[str, Any]] = None) -> None:
+        self.status = NotificationStatus.SENT
+        self.sent_at = datetime.now()
+        if response_data:
+            self.response_data = response_data
     
-    # Dados da notificação - campos opcionais para compatibility
-    notification_type: Optional[NotificationType] = None
-    priority: Optional[NotificationPriority] = None
+    def mark_as_failed(self, error_message: str) -> None:
+        self.status = NotificationStatus.FAILED
+        self.error_message = error_message
+        self.retry_count += 1
     
-    # Compatibility fields for existing agent code
-    issue_creation_id: Optional[str] = None
-    github_issue_url: Optional[str] = None
-    discord_message_id: Optional[str] = None
-    discord_channel: Optional[str] = None
-    message: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    def can_retry(self) -> bool:
+        return self.retry_count < self.max_retries and self.status == NotificationStatus.FAILED
     
-    # Dados do Discord
-    channel_id: Optional[str] = None
-    message_id: Optional[str] = None
-    webhook_url: Optional[str] = None
+    def mark_for_retry(self) -> None:
+        if self.can_retry():
+            self.status = NotificationStatus.RETRYING
     
-    # Histórico de tentativas
-    attempts: Optional[List[NotificationAttempt]] = None
+    def is_urgent(self) -> bool:
+        return self.priority == NotificationPriority.URGENT
     
-    # Metadados
-    notifier_agent: str = "IssueNotificatorAgent"
-    notification_timestamp: Optional[str] = None
-    total_attempts: int = 0
-    
-    # Dados da mensagem enviada
-    message_content: Optional[str] = None
-    embed_count: int = 0
-    
-    # Informações de erro
-    error_type: Optional[str] = None
-    error_message: Optional[str] = None
-    error_details: Optional[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        if self.attempts is None:
-            self.attempts = []
-        if self.notification_timestamp is None:
-            self.notification_timestamp = datetime.now().isoformat()
-        self.success = self.status == NotificationStatus.SUCCESS
-    
-    def add_attempt(self, attempt: NotificationAttempt):
-        """Adiciona uma nova tentativa ao histórico"""
-        self.attempts.append(attempt)
-        self.total_attempts = len(self.attempts)
-        self.status = attempt.status
-        
-        if attempt.status == NotificationStatus.SUCCESS:
-            self.success = True
-        elif attempt.status == NotificationStatus.FAILED:
-            self.error_message = attempt.error_message
-    
-    def get_notification_summary(self) -> str:
-        """Retorna um resumo da notificação"""
-        if self.success:
-            return f"✅ Notificação enviada com sucesso (ID: {self.message_id})"
-        else:
-            return f"❌ Falha no envio: {self.error_message}"
-    
-    def is_retryable(self) -> bool:
-        """Verifica se a notificação pode ser tentada novamente"""
-        retryable_statuses = [
-            NotificationStatus.RATE_LIMITED,
-            NotificationStatus.FAILED
-        ]
-        return self.status in retryable_statuses and self.total_attempts < 3
-
-
-@dataclass
-class NotificationTemplate:
-    """Template para diferentes tipos de notificação"""
-    notification_type: NotificationType
-    title_template: str
-    description_template: str
-    color: int
-    priority: NotificationPriority = NotificationPriority.MEDIUM
-    
-    # Configurações de menção
-    mention_roles: Optional[List[str]] = None
-    mention_users: Optional[List[str]] = None
-    
-    def __post_init__(self):
-        if self.mention_roles is None:
-            self.mention_roles = []
-        if self.mention_users is None:
-            self.mention_users = []
-    
-    def create_message(self, context: Dict[str, Any]) -> DiscordMessage:
-        """Cria uma mensagem baseada no template"""
-        # Substitui placeholders no template
-        title = self.title_template.format(**context)
-        description = self.description_template.format(**context)
-        
-        # Cria embed
-        embed = DiscordEmbed(
-            title=title,
-            description=description,
-            color=self.color
-        )
-        
-        # Adiciona URL se disponível
-        if "issue_url" in context:
-            embed.url = context["issue_url"]
-        
-        # Cria mensagem
-        message = DiscordMessage()
-        message.add_embed(embed)
-        
-        # Adiciona menções
-        for role_id in self.mention_roles:
-            if self.priority in [NotificationPriority.HIGH, NotificationPriority.CRITICAL]:
-                message.content = (message.content or "") + f" <@&{role_id}>"
-        
-        return message
-
-
-@dataclass
-class NotificationConfig:
-    """Configuração para notificações"""
-    # Configurações do Discord
-    webhook_url: str
-    default_channel_id: str
-    
-    # Configurações de retry
-    max_attempts: int = 3
-    retry_delay_seconds: int = 30
-    
-    # Templates de notificação
-    templates: Optional[Dict[NotificationType, NotificationTemplate]] = None
-    
-    # Configurações de rate limiting
-    respect_rate_limits: bool = True
-    rate_limit_delay: int = 60
-    
-    def __post_init__(self):
-        if self.templates is None:
-            self.templates = self._create_default_templates()
-    
-    def _create_default_templates(self) -> Dict[NotificationType, NotificationTemplate]:
-        """Cria templates padrão"""
+    def get_notification_summary(self) -> Dict[str, Any]:
         return {
-            NotificationType.NEW_BUG: NotificationTemplate(
-                notification_type=NotificationType.NEW_BUG,
-                title_template="🐛 Novo Bug Detectado: {title}",
-                description_template="**Criticidade:** {criticality}\n**Log:** {log_summary}\n\n[Ver Issue Completa]({issue_url})",
-                color=0xFF6B6B,  # Vermelho claro
-                priority=NotificationPriority.MEDIUM
-            ),
-            NotificationType.CRITICAL_BUG: NotificationTemplate(
-                notification_type=NotificationType.CRITICAL_BUG,
-                title_template="🚨 BUG CRÍTICO: {title}",
-                description_template="**⚠️ ATENÇÃO: Bug de alta criticidade detectado!**\n\n**Log:** {log_summary}\n\n[RESOLVER IMEDIATAMENTE]({issue_url})",
-                color=0xFF0000,  # Vermelho
-                priority=NotificationPriority.CRITICAL
-            )
+            "id": self.id,
+            "issue_id": self.issue_id,
+            "channel": self.channel,
+            "priority": self.priority,
+            "status": self.status,
+            "retry_count": self.retry_count,
+            "created_at": self.created_at,
+            "sent_at": self.sent_at
         }
 
 
-@dataclass
-class NotificationMetrics:
-    """Métricas de notificações"""
-    total_notifications: int = 0
-    successful_notifications: int = 0
-    failed_notifications: int = 0
-    rate_limited_attempts: int = 0
-    average_send_time: float = 0.0
+def create_discord_notification_from_issue(issue: IssueModel, webhook_url: str) -> NotificationModel:
+    from uuid import uuid4
     
-    # Métricas por tipo
-    notifications_by_type: Optional[Dict[NotificationType, int]] = None
+    # Determinar prioridade baseada na análise do bug
+    priority_map = {
+        "critical": NotificationPriority.URGENT,
+        "high": NotificationPriority.HIGH,
+        "medium": NotificationPriority.NORMAL,
+        "low": NotificationPriority.LOW
+    }
+    priority = priority_map.get(issue.bug_analysis.severity, NotificationPriority.NORMAL)
     
-    def __post_init__(self):
-        if self.notifications_by_type is None:
-            self.notifications_by_type = {}
+    # Criar notificação Discord
+    discord_data = DiscordNotification(
+        webhook_url=webhook_url,
+        embed_title=f"🐛 Nova Issue Criada: {issue.draft.title}",
+        embed_description=issue.draft.description[:500] + "..." if len(issue.draft.description) > 500 else issue.draft.description
+    )
     
-    def success_rate(self) -> float:
-        """Taxa de sucesso das notificações"""
-        if self.total_notifications == 0:
-            return 0.0
-        return (self.successful_notifications / self.total_notifications) * 100
+    # Definir cor baseada na prioridade
+    discord_data.set_color_by_priority(priority)
     
-    def update_metrics(self, result: NotificationResult):
-        """Atualiza métricas com novo resultado"""
-        self.total_notifications += 1
-        
-        if result.success:
-            self.successful_notifications += 1
-        else:
-            self.failed_notifications += 1
-        
-        # Conta por tipo
-        notification_type = result.notification_type
-        self.notifications_by_type[notification_type] = (
-            self.notifications_by_type.get(notification_type, 0) + 1
-        )
-        
-        # Conta rate limits
-        rate_limited = sum(
-            1 for attempt in result.attempts 
-            if attempt.status == NotificationStatus.RATE_LIMITED
-        )
-        self.rate_limited_attempts += rate_limited
+    # Adicionar campos informativos
+    discord_data.add_field("Severidade", issue.bug_analysis.severity.value.title(), True)
+    discord_data.add_field("Categoria", issue.bug_analysis.category.value.replace("_", " ").title(), True)
+    discord_data.add_field("Prioridade", issue.draft.priority.value.title(), True)
+    
+    if issue.github_issue_url:
+        discord_data.add_field("GitHub", f"[Ver Issue]({issue.github_issue_url})", False)
+    
+    # Criar modelo de notificação
+    notification = NotificationModel(
+        id=str(uuid4()),
+        issue_id=issue.id,
+        channel=NotificationChannel.DISCORD,
+        priority=priority,
+        title=f"Nova Issue: {issue.draft.title}",
+        message=f"Uma nova issue foi criada automaticamente pelo Bug Finder: {issue.draft.title}",
+        summary=f"Bug {issue.bug_analysis.severity.value} detectado e issue criada",
+        discord_data=discord_data
+    )
+    
+    return notification

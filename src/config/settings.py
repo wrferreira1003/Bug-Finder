@@ -1,46 +1,20 @@
-"""
-Configurações gerais do sistema Bug Finder.
-Define parâmetros, credenciais e configurações de comportamento.
-"""
-
 import os
-from typing import Dict, List, Optional
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field
 from enum import Enum
-from pathlib import Path
+from dotenv import load_dotenv
 
-# Carrega variáveis do arquivo .env
-try:
-    from dotenv import load_dotenv
-    
-    # Procura o arquivo .env na raiz do projeto
-    current_file = Path(__file__).resolve()
-    project_root = current_file.parent.parent.parent  # src/config/settings.py -> projeto/
-    env_file = project_root / ".env"
-    
-    if env_file.exists():
-        load_dotenv(env_file)
-        print(f"✅ Arquivo .env carregado: {env_file}")
-    else:
-        # Tenta carregar do diretório atual
-        load_dotenv()
-        print(f"⚠️  Arquivo .env não encontrado em {env_file}, usando variáveis do sistema")
-        
-except ImportError:
-    print("⚠️  python-dotenv não instalado. Execute: pip install python-dotenv")
-except Exception as e:
-    print(f"⚠️  Erro ao carregar .env: {e}")
+# Carregar variáveis do arquivo .env
+load_dotenv()
 
 
-class Environment(Enum):
-    """Ambientes de execução"""
+class Environment(str, Enum):
     DEVELOPMENT = "development"
-    STAGING = "staging"
+    TESTING = "testing"
     PRODUCTION = "production"
 
 
-class LogLevel(Enum):
-    """Níveis de log"""
+class LogLevel(str, Enum):
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -48,348 +22,201 @@ class LogLevel(Enum):
     CRITICAL = "CRITICAL"
 
 
-@dataclass
-class AIConfig:
-    """Configurações do modelo de IA"""
-    # Configurações do Gemini
-    model_name: str = "gemini-2.0-flash"
-    api_key: Optional[str] = None
+class BugFinderSettings(BaseModel):
+    # Environment
+    environment: Environment = Field(
+        default=Environment.DEVELOPMENT,
+        description="Environment the system is running in"
+    )
+    debug_mode: bool = Field(default=True, description="Enable debug mode")
     
-    # Parâmetros de geração
-    temperature: float = 0.3
-    max_tokens: int = 4096
-    top_p: float = 0.8
-    top_k: int = 40
+    # API Keys and Tokens
+    github_access_token: str = Field(..., description="GitHub personal access token")
+    google_ai_api_key: str = Field(..., description="Google AI API key for Gemini")
+    discord_webhook_url: Optional[str] = Field(None, description="Discord webhook URL for notifications")
     
-    # Configurações de timeout
-    request_timeout: int = 60
-    max_retries: int = 3
-    retry_delay: int = 2
+    # GitHub Configuration
+    github_repository_owner: str = Field(..., description="GitHub repository owner")
+    github_repository_name: str = Field(..., description="GitHub repository name")
+    github_default_labels: List[str] = Field(
+        default=["bug", "auto-generated"],
+        description="Default labels for created issues"
+    )
+    github_default_assignees: List[str] = Field(
+        default_factory=list,
+        description="Default assignees for created issues"
+    )
     
-    def __post_init__(self):
-        # Carrega API key do ambiente se não fornecida
-        if not self.api_key:
-            self.api_key = os.getenv("GEMINI_API_KEY")
+    # Google AI Configuration
+    gemini_model: str = Field(default="gemini-1.5-pro", description="Gemini model to use")
+    gemini_temperature: float = Field(default=0.1, description="Temperature for AI responses")
+    gemini_max_tokens: int = Field(default=8192, description="Maximum tokens for AI responses")
+    gemini_timeout_seconds: int = Field(default=30, description="Timeout for AI requests")
+    
+    # Processing Configuration
+    max_log_size_mb: float = Field(default=10.0, description="Maximum log size in MB")
+    max_processing_time_minutes: int = Field(default=10, description="Maximum processing time per log")
+    enable_parallel_processing: bool = Field(default=False, description="Enable parallel processing of logs")
+    max_parallel_workers: int = Field(default=3, description="Maximum parallel workers")
+    
+    # Analysis Configuration
+    minimum_confidence_score: float = Field(default=0.7, description="Minimum confidence to create issue")
+    enable_duplicate_detection: bool = Field(default=True, description="Enable duplicate issue detection")
+    duplicate_similarity_threshold: float = Field(default=0.8, description="Similarity threshold for duplicates")
+    
+    # Issue Creation Configuration
+    max_issue_creation_retries: int = Field(default=3, description="Maximum retries for issue creation")
+    issue_creation_retry_delay_seconds: int = Field(default=5, description="Delay between retries")
+    enable_issue_review: bool = Field(default=True, description="Enable issue review process")
+    max_review_iterations: int = Field(default=2, description="Maximum review iterations")
+    
+    # Notification Configuration
+    enable_discord_notifications: bool = Field(default=True, description="Enable Discord notifications")
+    notification_retry_attempts: int = Field(default=3, description="Notification retry attempts")
+    notification_retry_delay_seconds: int = Field(default=10, description="Delay between notification retries")
+    
+    # Rate Limiting
+    github_rate_limit_buffer: int = Field(default=100, description="GitHub rate limit buffer")
+    discord_rate_limit_per_minute: int = Field(default=30, description="Discord rate limit per minute")
+    ai_requests_per_minute: int = Field(default=60, description="AI requests per minute limit")
+    
+    # Logging Configuration
+    log_level: LogLevel = Field(default=LogLevel.INFO, description="Logging level")
+    log_file_path: Optional[str] = Field(None, description="Path to log file")
+    enable_structured_logging: bool = Field(default=True, description="Enable structured JSON logging")
+    log_retention_days: int = Field(default=30, description="Log retention period in days")
+    
+    # System Configuration
+    system_version: str = Field(default="1.0.0", description="Bug Finder system version")
+    enable_metrics: bool = Field(default=True, description="Enable metrics collection")
+    metrics_retention_days: int = Field(default=90, description="Metrics retention period")
+    
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+    
+    @classmethod
+    def from_env(cls) -> "BugFinderSettings":
+        # Helper function to clean environment values
+        def clean_env(key: str, default: str = "") -> str:
+            value = os.getenv(key, default)
+            return value.split('#')[0].strip() if value else default
         
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY é obrigatória")
-
-
-@dataclass
-class GitHubConfig:
-    """Configurações do GitHub"""
-    # Credenciais
-    token: Optional[str] = None
+        return cls(
+            environment=Environment(clean_env("ENVIRONMENT", "development")),
+            debug_mode=clean_env("DEBUG_MODE", "true").lower() == "true",
+            
+            # Required API keys
+            github_access_token=clean_env("GITHUB_ACCESS_TOKEN"),
+            google_ai_api_key=clean_env("GOOGLE_AI_API_KEY"),
+            discord_webhook_url=clean_env("DISCORD_WEBHOOK_URL") or None,
+            
+            # GitHub settings
+            github_repository_owner=clean_env("GITHUB_REPOSITORY_OWNER"),
+            github_repository_name=clean_env("GITHUB_REPOSITORY_NAME"),
+            github_default_labels=[l.strip() for l in clean_env("GITHUB_DEFAULT_LABELS", "bug,auto-generated").split(",")],
+            github_default_assignees=[a.strip() for a in clean_env("GITHUB_DEFAULT_ASSIGNEES").split(",") if a.strip()],
+            
+            # Google AI settings
+            gemini_model=clean_env("GEMINI_MODEL", "gemini-1.5-pro"),
+            gemini_temperature=float(clean_env("GEMINI_TEMPERATURE", "0.1")),
+            gemini_max_tokens=int(clean_env("GEMINI_MAX_TOKENS", "8192")),
+            gemini_timeout_seconds=int(clean_env("GEMINI_TIMEOUT_SECONDS", "30")),
+            
+            # Processing settings
+            max_log_size_mb=float(clean_env("MAX_LOG_SIZE_MB", "10.0")),
+            max_processing_time_minutes=int(clean_env("MAX_PROCESSING_TIME_MINUTES", "10")),
+            enable_parallel_processing=clean_env("ENABLE_PARALLEL_PROCESSING", "false").lower() == "true",
+            max_parallel_workers=int(clean_env("MAX_PARALLEL_WORKERS", "3")),
+            
+            # Analysis settings
+            minimum_confidence_score=float(clean_env("MINIMUM_CONFIDENCE_SCORE", "0.7")),
+            enable_duplicate_detection=clean_env("ENABLE_DUPLICATE_DETECTION", "true").lower() == "true",
+            duplicate_similarity_threshold=float(clean_env("DUPLICATE_SIMILARITY_THRESHOLD", "0.8")),
+            
+            # Issue creation settings
+            max_issue_creation_retries=int(clean_env("MAX_ISSUE_CREATION_RETRIES", "3")),
+            issue_creation_retry_delay_seconds=int(clean_env("ISSUE_CREATION_RETRY_DELAY_SECONDS", "5")),
+            enable_issue_review=clean_env("ENABLE_ISSUE_REVIEW", "true").lower() == "true",
+            max_review_iterations=int(clean_env("MAX_REVIEW_ITERATIONS", "2")),
+            
+            # Notification settings
+            enable_discord_notifications=clean_env("ENABLE_DISCORD_NOTIFICATIONS", "true").lower() == "true",
+            notification_retry_attempts=int(clean_env("NOTIFICATION_RETRY_ATTEMPTS", "3")),
+            notification_retry_delay_seconds=int(clean_env("NOTIFICATION_RETRY_DELAY_SECONDS", "10")),
+            
+            # Rate limiting
+            github_rate_limit_buffer=int(clean_env("GITHUB_RATE_LIMIT_BUFFER", "100")),
+            discord_rate_limit_per_minute=int(clean_env("DISCORD_RATE_LIMIT_PER_MINUTE", "30")),
+            ai_requests_per_minute=int(clean_env("AI_REQUESTS_PER_MINUTE", "60")),
+            
+            # Logging
+            log_level=LogLevel(clean_env("LOG_LEVEL", "INFO")),
+            log_file_path=clean_env("LOG_FILE_PATH") or None,
+            enable_structured_logging=clean_env("ENABLE_STRUCTURED_LOGGING", "true").lower() == "true",
+            log_retention_days=int(clean_env("LOG_RETENTION_DAYS", "30")),
+            
+            # System
+            system_version=clean_env("SYSTEM_VERSION", "1.0.0"),
+            enable_metrics=clean_env("ENABLE_METRICS", "true").lower() == "true",
+            metrics_retention_days=int(clean_env("METRICS_RETENTION_DAYS", "90"))
+        )
     
-    # Repositório padrão
-    owner: str = ""
-    repository: str = ""
-    
-    # Configurações de API
-    api_base_url: str = "https://api.github.com"
-    timeout: int = 30
-    max_retries: int = 3
-    
-    # Configurações de issue
-    default_labels: List[str] = None
-    default_assignees: List[str] = None
-    
-    # Rate limiting
-    requests_per_hour: int = 5000
-    respect_rate_limits: bool = True
-    
-    def __post_init__(self):
-        if self.default_labels is None:
-            self.default_labels = ["bug", "automated"]
-        if self.default_assignees is None:
-            self.default_assignees = []
-        
-        # Carrega token do ambiente se não fornecido
-        if not self.token:
-            self.token = os.getenv("GITHUB_TOKEN")
-        
-        if not self.token:
-            raise ValueError("GITHUB_TOKEN é obrigatório")
-        
-        # Carrega repositório do ambiente se não fornecido
-        if not self.owner:
-            self.owner = os.getenv("GITHUB_OWNER", "")
-        if not self.repository:
-            self.repository = os.getenv("GITHUB_REPOSITORY", "")
-
-
-@dataclass
-class DiscordConfig:
-    """Configurações do Discord"""
-    # Webhook URL
-    webhook_url: Optional[str] = None
-    
-    # Configurações de canal
-    default_channel_id: str = ""
-    notification_channels: Dict[str, str] = None
-    
-    # Configurações de menção
-    mention_roles: Dict[str, List[str]] = None
-    mention_users: Dict[str, List[str]] = None
-    
-    # Rate limiting
-    requests_per_second: int = 1
-    max_retries: int = 3
-    
-    def __post_init__(self):
-        if self.notification_channels is None:
-            self.notification_channels = {
-                "critical": os.getenv("DISCORD_CRITICAL_CHANNEL", ""),
-                "high": os.getenv("DISCORD_HIGH_CHANNEL", ""),
-                "general": os.getenv("DISCORD_GENERAL_CHANNEL", "")
-            }
-        
-        if self.mention_roles is None:
-            self.mention_roles = {
-                "critical": os.getenv("DISCORD_CRITICAL_ROLES", "").split(","),
-                "high": os.getenv("DISCORD_HIGH_ROLES", "").split(",")
-            }
-        
-        if self.mention_users is None:
-            self.mention_users = {}
-        
-        # Carrega webhook URL do ambiente se não fornecida
-        if not self.webhook_url:
-            self.webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-        
-        if not self.webhook_url:
-            raise ValueError("DISCORD_WEBHOOK_URL é obrigatória")
-
-
-@dataclass
-class ProcessConfig:
-    """Configurações do processo Bug Finder"""
-    # Configurações de análise
-    minimum_criticality: str = "MEDIUM"
-    create_issues_for_low_priority: bool = False
-    auto_close_duplicates: bool = True
-    
-    # Configurações de revisão
-    max_review_iterations: int = 3
-    auto_approve_threshold: int = 4
-    require_manual_approval: bool = False
-    
-    # Configurações de timeout
-    step_timeout_seconds: int = 300  # 5 minutos
-    total_timeout_seconds: int = 1800  # 30 minutos
-    
-    # Configurações de retry
-    retry_failed_steps: bool = True
-    max_retries_per_step: int = 2
-    retry_delay_seconds: int = 60
-    
-    # Configurações de notificação
-    notify_on_completion: bool = True
-    notify_on_failure: bool = True
-    notify_critical_immediately: bool = True
-    
-    # Configurações de logging
-    log_all_steps: bool = True
-    log_agent_communications: bool = False
-    save_process_history: bool = True
-
-
-@dataclass
-class DatabaseConfig:
-    """Configurações do banco de dados (para futura implementação)"""
-    # Configurações de conexão
-    host: str = "localhost"
-    port: int = 5432
-    database: str = "bugfinder"
-    username: str = ""
-    password: str = ""
-    
-    # Pool de conexões
-    min_connections: int = 1
-    max_connections: int = 10
-    
-    # Configurações de timeout
-    connection_timeout: int = 30
-    query_timeout: int = 60
-    
-    def __post_init__(self):
-        # Carrega credenciais do ambiente
-        self.host = os.getenv("DB_HOST", self.host)
-        self.port = int(os.getenv("DB_PORT", str(self.port)))
-        self.database = os.getenv("DB_NAME", self.database)
-        self.username = os.getenv("DB_USERNAME", self.username)
-        self.password = os.getenv("DB_PASSWORD", self.password)
-
-
-@dataclass
-class LoggingConfig:
-    """Configurações de logging"""
-    # Nível de log
-    level: LogLevel = LogLevel.INFO
-    
-    # Formato dos logs
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    date_format: str = "%Y-%m-%d %H:%M:%S"
-    
-    # Arquivo de log
-    log_to_file: bool = True
-    log_file_path: str = "logs/bugfinder.log"
-    max_file_size_mb: int = 10
-    backup_count: int = 5
-    
-    # Log estruturado
-    structured_logging: bool = True
-    include_process_id: bool = True
-    include_thread_id: bool = True
-    
-    def __post_init__(self):
-        # Carrega configurações do ambiente
-        env_level = os.getenv("LOG_LEVEL", self.level.value)
-        try:
-            self.level = LogLevel(env_level)
-        except ValueError:
-            self.level = LogLevel.INFO
-
-
-class Settings:
-    """Classe principal de configurações do Bug Finder"""
-    
-    def __init__(self, environment: Environment = Environment.PRODUCTION):
-        self.environment = environment
-        
-        # Inicializa todas as configurações
-        self.ai = AIConfig()
-        self.github = GitHubConfig()
-        self.discord = DiscordConfig()
-        self.process = ProcessConfig()
-        self.database = DatabaseConfig()
-        self.logging = LoggingConfig()
-        
-        # Configurações específicas por ambiente
-        self._apply_environment_configs()
-    
-    def _apply_environment_configs(self):
-        """Aplica configurações específicas por ambiente"""
-        if self.environment == Environment.DEVELOPMENT:
-            self._apply_development_config()
-        elif self.environment == Environment.STAGING:
-            self._apply_staging_config()
-        elif self.environment == Environment.PRODUCTION:
-            self._apply_production_config()
-    
-    def _apply_development_config(self):
-        """Configurações para desenvolvimento"""
-        # IA - configurações mais flexíveis
-        self.ai.temperature = 0.5
-        self.ai.max_retries = 1
-        
-        # Processo - mais permissivo
-        self.process.create_issues_for_low_priority = True
-        self.process.require_manual_approval = False
-        self.process.max_review_iterations = 2
-        
-        # Logging - mais verboso
-        self.logging.level = LogLevel.DEBUG
-        self.logging.log_agent_communications = True
-        
-        # GitHub - labels de desenvolvimento
-        self.github.default_labels = ["bug", "automated", "development"]
-    
-    def _apply_staging_config(self):
-        """Configurações para staging"""
-        # Processo - configurações intermediárias
-        self.process.require_manual_approval = True
-        self.process.notify_critical_immediately = True
-        
-        # Logging - nível intermediário
-        self.logging.level = LogLevel.INFO
-        
-        # GitHub - labels de staging
-        self.github.default_labels = ["bug", "automated", "staging"]
-    
-    def _apply_production_config(self):
-        """Configurações para produção"""
-        # IA - configurações conservadoras
-        self.ai.temperature = 0.3
-        self.ai.max_retries = 3
-        
-        # Processo - configurações rigorosas
-        self.process.create_issues_for_low_priority = False
-        self.process.auto_approve_threshold = 4
-        self.process.notify_critical_immediately = True
-        
-        # Logging - nível de produção
-        self.logging.level = LogLevel.WARNING
-        self.logging.log_agent_communications = False
-        
-        # GitHub - labels de produção
-        self.github.default_labels = ["bug", "automated", "production"]
-    
-    def get_environment_name(self) -> str:
-        """Retorna o nome do ambiente atual"""
-        return self.environment.value
-    
-    def is_development(self) -> bool:
-        """Verifica se está em ambiente de desenvolvimento"""
-        return self.environment == Environment.DEVELOPMENT
-    
-    def is_production(self) -> bool:
-        """Verifica se está em ambiente de produção"""
-        return self.environment == Environment.PRODUCTION
-    
-    def validate_config(self) -> List[str]:
-        """Valida todas as configurações e retorna lista de erros"""
+    def validate_required_settings(self) -> List[str]:
         errors = []
         
-        # Valida configurações obrigatórias
-        if not self.ai.api_key:
-            errors.append("GEMINI_API_KEY não configurada")
+        if not self.github_access_token:
+            errors.append("GITHUB_ACCESS_TOKEN is required")
         
-        if not self.github.token:
-            errors.append("GITHUB_TOKEN não configurado")
+        if not self.google_ai_api_key:
+            errors.append("GOOGLE_AI_API_KEY is required")
         
-        if not self.github.owner or not self.github.repository:
-            errors.append("GitHub owner/repository não configurados")
+        if not self.github_repository_owner:
+            errors.append("GITHUB_REPOSITORY_OWNER is required")
         
-        if not self.discord.webhook_url:
-            errors.append("DISCORD_WEBHOOK_URL não configurada")
+        if not self.github_repository_name:
+            errors.append("GITHUB_REPOSITORY_NAME is required")
         
-        # Valida valores numéricos
-        if self.ai.temperature < 0 or self.ai.temperature > 1:
-            errors.append("AI temperature deve estar entre 0 e 1")
+        if self.enable_discord_notifications and not self.discord_webhook_url:
+            errors.append("DISCORD_WEBHOOK_URL is required when Discord notifications are enabled")
         
-        if self.process.max_review_iterations < 1:
-            errors.append("max_review_iterations deve ser pelo menos 1")
+        # Validate ranges
+        if not (0.0 <= self.gemini_temperature <= 2.0):
+            errors.append("GEMINI_TEMPERATURE must be between 0.0 and 2.0")
+        
+        if not (0.0 <= self.minimum_confidence_score <= 1.0):
+            errors.append("MINIMUM_CONFIDENCE_SCORE must be between 0.0 and 1.0")
+        
+        if not (0.0 <= self.duplicate_similarity_threshold <= 1.0):
+            errors.append("DUPLICATE_SIMILARITY_THRESHOLD must be between 0.0 and 1.0")
         
         return errors
     
-    def get_config_summary(self) -> Dict[str, str]:
-        """Retorna um resumo das configurações principais"""
+    def get_summary(self) -> Dict[str, Any]:
         return {
-            "environment": self.environment.value,
-            "ai_model": self.ai.model_name,
-            "github_repo": f"{self.github.owner}/{self.github.repository}",
-            "log_level": self.logging.level.value,
-            "min_criticality": self.process.minimum_criticality,
-            "max_review_iterations": str(self.process.max_review_iterations)
+            "environment": self.environment,
+            "debug_mode": self.debug_mode,
+            "system_version": self.system_version,
+            "github_repository": f"{self.github_repository_owner}/{self.github_repository_name}",
+            "gemini_model": self.gemini_model,
+            "notifications_enabled": self.enable_discord_notifications,
+            "review_enabled": self.enable_issue_review,
+            "parallel_processing": self.enable_parallel_processing
         }
 
 
-# Instância global de configurações
-def get_settings(environment: Optional[Environment] = None) -> Settings:
-    """
-    Retorna instância de configurações.
-    Se environment não for especificado, detecta do ambiente.
-    """
-    if environment is None:
-        env_name = os.getenv("ENVIRONMENT", "production").lower()
-        try:
-            environment = Environment(env_name)
-        except ValueError:
-            environment = Environment.PRODUCTION
-    
-    return Settings(environment)
+# Global settings instance
+_settings: Optional[BugFinderSettings] = None
 
 
-# Configurações padrão para importação direta
-settings = get_settings()
+def get_settings() -> BugFinderSettings:
+    global _settings
+    if _settings is None:
+        _settings = BugFinderSettings.from_env()
+    return _settings
+
+
+def reload_settings() -> BugFinderSettings:
+    global _settings
+    _settings = BugFinderSettings.from_env()
+    return _settings

@@ -1,246 +1,227 @@
 import os
-import requests
-from typing import Dict, Any, Optional
-from github import Github
-from dataclasses import dataclass
-from src.models.issue_model import IssueModel
+from typing import Optional, Dict, Any, List
+from github import Github, GithubException
+from github.Repository import Repository
+from github.Issue import Issue
+import logging
 
-@dataclass
-class GitHubConfig:
-    """Configuração para integração com GitHub"""
-    token: str
-    repository: str
-    base_url: str = "https://api.github.com"
-    timeout: int = 30
+from ..models.creation_model import GitHubIssueCreation, CreationAttempt
 
-class GitHubError(Exception):
-    """Erro específico para operações com GitHub"""
-    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
-        super().__init__(message)
-        self.status_code = status_code
-        self.details = details or {}
 
 class GitHubTool:
-    """
-    Ferramenta para interação com a API do GitHub.
+    def __init__(self, access_token: Optional[str] = None):
+        self.access_token = access_token or os.getenv("GITHUB_ACCESS_TOKEN")
+        if not self.access_token:
+            raise ValueError("GitHub access token is required. Set GITHUB_ACCESS_TOKEN environment variable.")
+        
+        self.github = Github(self.access_token)
+        self.logger = logging.getLogger(__name__)
     
-    Esta classe encapsula todas as operações relacionadas ao GitHub,
-    como criar issues, comentários, etc.
-    """
-    def __init__(self, config: GitHubConfig):
-        self.config = config
-        self.client = Github(self.config.token)
-        self.repo = None
-        
-    def _ensure_repo(self):
-        """Garante que o repositório está inicializado"""
-        if self.repo is None:
-            self.repo = self.client.get_repo(self.config.repository)
+    def get_repository(self, owner: str, repo_name: str) -> Repository:
+        try:
+            return self.github.get_repo(f"{owner}/{repo_name}")
+        except GithubException as e:
+            self.logger.error(f"Failed to get repository {owner}/{repo_name}: {e}")
+            raise
     
-    def test_connection(self) -> Dict[str, Any]:
-        """
-        Testa a conexão com GitHub sem acessar repositório específico.
+    def create_issue(self, creation_data: GitHubIssueCreation, attempt: CreationAttempt) -> bool:
+        attempt.start_attempt()
         
-        Returns:
-            Dict com resultado do teste
-        """
         try:
-            # Testa apenas a autenticação
-            user = self.client.get_user()
-            return {
-                "success": True,
-                "message": f"Conectado como: {user.login}",
-                "user": user.login
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"Erro de conexão: {str(e)}"
-            }
-
-    # Cria uma nova issue
-    def create_issue(self, issue_data: IssueModel) -> None:
-        """
-        Cria uma nova issue no GitHub.
-        
-        Args:
-            issue_data: Dados estruturados da issue
+            # Obter repositório
+            repo = self.get_repository(creation_data.repository_owner, creation_data.repository_name)
             
-        Returns:
-            Dict contendo informações da issue criada
+            # Preparar dados para criação
+            payload = creation_data.get_github_payload()
+            self.logger.info(f"Creating GitHub issue: {payload['title']}")
             
-        Raises:
-            GitHubError: Se houver erro na criação
-        """
-        try:
-            self._ensure_repo()
-            github_issue = self.repo.create_issue(
-                title=issue_data.title,
-                body=issue_data.github_body,
-                labels=issue_data.labels or [],
-                assignees=issue_data.assignees or []
+            # Criar issue
+            issue = repo.create_issue(**payload)
+            
+            # Atualizar dados de criação com resposta
+            response_data = {
+                "number": issue.number,
+                "url": issue.url,
+                "html_url": issue.html_url,
+                "id": issue.id,
+                "state": issue.state,
+                "created_at": issue.created_at.isoformat() if issue.created_at else None
+            }
+            
+            creation_data.update_from_response(response_data)
+            
+            # Completar tentativa com sucesso
+            attempt.complete_attempt(
+                success=True,
+                response_status_code=201
             )
-
-            return {
-                "success": True,
-                "issue_number": github_issue.number,
-                "issue_url": github_issue.html_url,
-                "issue_id": github_issue.id,
-                "created_at": github_issue.created_at.isoformat(),
-                "message": f"Issue #{github_issue.number} criada com sucesso"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"Erro ao criar issue: {str(e)}"
-            }
-        
-    # Atualiza uma issue existente
-    def update_issue(self, issue_number: int, **kwargs) -> Dict[str, Any]:
-        """
-        Atualiza uma issue existente.
-        
-        Args:
-            issue_number: Número da issue no GitHub
-            **kwargs: Campos a serem atualizados
             
-        Returns:
-            Dict com resultado da operação
-        """
-        try:
-            self._ensure_repo()
-            issue = self.repo.get_issue(issue_number)
+            self.logger.info(f"Successfully created GitHub issue #{issue.number}: {issue.html_url}")
+            return True
             
-            if 'title' in kwargs:
-                issue.edit(title=kwargs['title'])
-            if 'body' in kwargs:
-                issue.edit(body=kwargs['body'])
-            if 'state' in kwargs:
-                issue.edit(state=kwargs['state'])
-            if 'labels' in kwargs:
-                issue.edit(labels=kwargs['labels'])
-                
-            return {
-                "success": True,
-                "message": f"Issue #{issue_number} atualizada com sucesso"
-            }
+        except GithubException as e:
+            error_message = f"GitHub API error: {e.data.get('message', str(e)) if hasattr(e, 'data') else str(e)}"
+            error_code = str(e.status) if hasattr(e, 'status') else "unknown"
+            
+            attempt.complete_attempt(
+                success=False,
+                error_message=error_message,
+                error_code=error_code,
+                response_status_code=e.status if hasattr(e, 'status') else None
+            )
+            
+            self.logger.error(f"Failed to create GitHub issue: {error_message}")
+            return False
             
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"Erro ao atualizar issue: {str(e)}"
-            }
-
-    # Adiciona um comentário a uma issue
-    def add_comment(self, issue_number: int, comment: str) -> Dict[str, Any]:
-        """
-        Adiciona um comentário a uma issue.
-        
-        Args:
-            issue_number: Número da issue
-            comment: Texto do comentário
+            error_message = f"Unexpected error: {str(e)}"
             
-        Returns:
-            Dict com resultado da operação
-        """
+            attempt.complete_attempt(
+                success=False,
+                error_message=error_message,
+                error_code="unexpected_error"
+            )
+            
+            self.logger.error(f"Unexpected error creating GitHub issue: {error_message}")
+            return False
+    
+    def get_issue(self, owner: str, repo_name: str, issue_number: int) -> Optional[Issue]:
         try:
-            self._ensure_repo()
-            issue = self.repo.get_issue(issue_number)
-            github_comment = issue.create_comment(comment)
-            
-            return {
-                "success": True,
-                "comment_id": github_comment.id,
-                "comment_url": github_comment.html_url,
-                "message": "Comentário adicionado com sucesso"
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"Erro ao adicionar comentário: {str(e)}"
-            }
-        
-    # Recupera informações de uma issue específica
-    def get_issue(self, issue_number: int) -> Dict[str, Any]:
-        """
-        Recupera informações de uma issue específica.
-        
-        Args:
-            issue_number: Número da issue
-            
-        Returns:
-            Dict com dados da issue
-        """
+            repo = self.get_repository(owner, repo_name)
+            return repo.get_issue(issue_number)
+        except GithubException as e:
+            self.logger.error(f"Failed to get issue #{issue_number}: {e}")
+            return None
+    
+    def update_issue(self, owner: str, repo_name: str, issue_number: int, 
+                    title: Optional[str] = None, body: Optional[str] = None, 
+                    state: Optional[str] = None, labels: Optional[List[str]] = None,
+                    assignees: Optional[List[str]] = None) -> bool:
         try:
-            self._ensure_repo()
-            issue = self.repo.get_issue(issue_number)
+            repo = self.get_repository(owner, repo_name)
+            issue = repo.get_issue(issue_number)
             
-            return {
-                "success": True,
-                "issue": {
+            # Preparar argumentos para atualização
+            update_kwargs = {}
+            if title is not None:
+                update_kwargs['title'] = title
+            if body is not None:
+                update_kwargs['body'] = body
+            if state is not None:
+                update_kwargs['state'] = state
+            if labels is not None:
+                update_kwargs['labels'] = labels
+            if assignees is not None:
+                update_kwargs['assignees'] = assignees
+            
+            # Atualizar issue
+            issue.edit(**update_kwargs)
+            
+            self.logger.info(f"Successfully updated GitHub issue #{issue_number}")
+            return True
+            
+        except GithubException as e:
+            self.logger.error(f"Failed to update GitHub issue #{issue_number}: {e}")
+            return False
+    
+    def add_comment(self, owner: str, repo_name: str, issue_number: int, comment: str) -> bool:
+        try:
+            repo = self.get_repository(owner, repo_name)
+            issue = repo.get_issue(issue_number)
+            issue.create_comment(comment)
+            
+            self.logger.info(f"Successfully added comment to GitHub issue #{issue_number}")
+            return True
+            
+        except GithubException as e:
+            self.logger.error(f"Failed to add comment to GitHub issue #{issue_number}: {e}")
+            return False
+    
+    def search_issues(self, owner: str, repo_name: str, query: str, 
+                     state: str = "open", sort: str = "created", 
+                     order: str = "desc", per_page: int = 30) -> List[Dict[str, Any]]:
+        try:
+            # Construir query de busca
+            search_query = f"repo:{owner}/{repo_name} is:issue state:{state} {query}"
+            
+            # Realizar busca
+            issues = self.github.search_issues(
+                query=search_query,
+                sort=sort,
+                order=order
+            )
+            
+            # Converter para lista de dicionários
+            results = []
+            for issue in issues[:per_page]:  # Limitar resultados
+                results.append({
                     "number": issue.number,
                     "title": issue.title,
                     "body": issue.body,
                     "state": issue.state,
-                    "url": issue.html_url,
-                    "created_at": issue.created_at.isoformat(),
-                    "updated_at": issue.updated_at.isoformat(),
+                    "created_at": issue.created_at.isoformat() if issue.created_at else None,
+                    "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
+                    "html_url": issue.html_url,
                     "labels": [label.name for label in issue.labels],
                     "assignees": [assignee.login for assignee in issue.assignees]
-                }
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": f"Erro ao recuperar issue: {str(e)}"
-            }
-
-    # Lista issues do repositório
-    def list_issues(self, state: str = "open", limit: int = 10) -> Dict[str, Any]:
-        """
-        Lista issues do repositório.
-        
-        Args:
-            state: Estado das issues ('open', 'closed', 'all')
-            limit: Número máximo de issues a retornar
-            
-        Returns:
-            Dict com lista de issues
-        """
-        try:
-            self._ensure_repo()
-            issues = self.repo.get_issues(state=state)
-            issue_list = []
-            
-            for i, issue in enumerate(issues):
-                if i >= limit:
-                    break
-                    
-                issue_list.append({
-                    "number": issue.number,
-                    "title": issue.title,
-                    "state": issue.state,
-                    "url": issue.html_url,
-                    "created_at": issue.created_at.isoformat(),
-                    "labels": [label.name for label in issue.labels]
                 })
             
+            self.logger.info(f"Found {len(results)} issues matching query: {query}")
+            return results
+            
+        except GithubException as e:
+            self.logger.error(f"Failed to search issues: {e}")
+            return []
+    
+    def get_rate_limit_info(self) -> Dict[str, Any]:
+        try:
+            rate_limit = self.github.get_rate_limit()
             return {
-                "success": True,
-                "issues": issue_list,
-                "total_count": len(issue_list)
+                "core": {
+                    "limit": rate_limit.core.limit,
+                    "remaining": rate_limit.core.remaining,
+                    "reset": rate_limit.core.reset.isoformat() if rate_limit.core.reset else None
+                },
+                "search": {
+                    "limit": rate_limit.search.limit,
+                    "remaining": rate_limit.search.remaining,
+                    "reset": rate_limit.search.reset.isoformat() if rate_limit.search.reset else None
+                }
+            }
+        except GithubException as e:
+            self.logger.error(f"Failed to get rate limit info: {e}")
+            return {}
+    
+    def test_connection(self) -> bool:
+        try:
+            user = self.github.get_user()
+            self.logger.info(f"GitHub connection test successful. Authenticated as: {user.login}")
+            return True
+        except GithubException as e:
+            self.logger.error(f"GitHub connection test failed: {e}")
+            return False
+    
+    def validate_repository_access(self, owner: str, repo_name: str) -> Dict[str, Any]:
+        try:
+            repo = self.get_repository(owner, repo_name)
+            
+            # Verificar permissões
+            permissions = repo.permissions
+            
+            return {
+                "exists": True,
+                "has_issues": repo.has_issues,
+                "permissions": {
+                    "admin": permissions.admin if permissions else False,
+                    "push": permissions.push if permissions else False,
+                    "pull": permissions.pull if permissions else False
+                },
+                "can_create_issues": repo.has_issues and (permissions.push if permissions else False)
             }
             
-        except Exception as e:
+        except GithubException as e:
             return {
-                "success": False,
+                "exists": False,
                 "error": str(e),
-                "message": f"Erro ao listar issues: {str(e)}"
+                "can_create_issues": False
             }

@@ -1,123 +1,90 @@
-"""
-Módulo de modelos de dados do Bug Finder.
-Centraliza todas as estruturas de dados utilizadas pelos agentes.
-"""
-
-# Modelos básicos
-from .log_model import (
-    LogLevel,
-    LogModel,
-    create_log_from_text,
-    is_log_worth_analyzing
-)
-
+from .log_model import LogModel, LogLevel, ProcessedLog
 from .bug_analysis import (
-    BugAnalysis,
-    BugSeverity,
-    BugCategory,
-    create_negative_analysis,
-    create_quick_bug_analysis
+    BugAnalysis, 
+    BugSeverity, 
+    BugCategory, 
+    BugImpact, 
+    AnalysisDecision, 
+    AnalysisResult
 )
-
 from .issue_model import (
-    IssueModel,
-    IssuePriority,
-    IssueStatus,
-    create_basic_issue,
-    create_issue_from_analysis
+    IssueModel, 
+    IssueDraft, 
+    IssueStatus, 
+    IssuePriority, 
+    IssueLabel, 
+    ReviewFeedback
 )
-
-# Modelos de processo
-from .review_model import (
-    ReviewStatus,
-    ReviewCriteria,
-    ReviewFeedback,
-    IssueReview,
-    ReviewMetrics
-)
-
-from .creation_model import (
-    CreationStatus,
-    IssueState,
-    GitHubIssueData,
-    CreationAttempt,
-    IssueCreationResult,
-    CreationConfig,
-    CreationMetrics
-)
-
 from .notification_model import (
+    NotificationModel, 
+    NotificationChannel, 
+    NotificationPriority, 
     NotificationStatus,
-    NotificationType,
-    NotificationPriority,
-    DiscordEmbed,
-    DiscordMessage,
-    NotificationAttempt,
-    NotificationResult,
-    NotificationTemplate,
-    NotificationConfig,
-    NotificationMetrics
+    DiscordNotification,
+    create_discord_notification_from_issue
 )
-
 from .process_model import (
-    ProcessStatus,
-    ProcessResult,
-    ProcessStep,
-    ProcessContext,
     BugFinderProcess,
-    ProcessConfig,
-    ProcessMetrics
+    ProcessStatus,
+    ProcessStep
+)
+from .review_model import (
+    IssueReview,
+    ReviewCriteria,
+    ReviewScore,
+    RefinementRequest
+)
+from .creation_model import (
+    IssueCreationRequest,
+    GitHubIssueCreation,
+    CreationAttempt,
+    CreationStatus
 )
 
-# Lista de todas as classes exportadas
 __all__ = [
-    # Modelos básicos
-    "LogLevel",
+    # Log models
     "LogModel",
-    "create_log_from_text",
-    "is_log_worth_analyzing",
+    "LogLevel", 
+    "ProcessedLog",
+    
+    # Bug analysis models
     "BugAnalysis",
     "BugSeverity",
     "BugCategory", 
-    "create_negative_analysis",
-    "create_quick_bug_analysis",
-    "IssueModel",
-    "IssuePriority", 
-    "IssueStatus",
-    "create_basic_issue",
-    "create_issue_from_analysis",
+    "BugImpact",
+    "AnalysisDecision",
+    "AnalysisResult",
     
-    # Modelos de processo
-    "ReviewStatus",
-    "ReviewCriteria",
+    # Issue models
+    "IssueModel",
+    "IssueDraft",
+    "IssueStatus",
+    "IssuePriority", 
+    "IssueLabel",
     "ReviewFeedback",
-    "IssueReview",
-    "ReviewMetrics",
-    "CreationStatus",
-    "IssueState",
-    "GitHubIssueData",
-    "CreationAttempt", 
-    "IssueCreationResult",
-    "CreationConfig",
-    "CreationMetrics",
-    "NotificationStatus",
-    "NotificationType",
+    
+    # Notification models
+    "NotificationModel",
+    "NotificationChannel",
     "NotificationPriority",
-    "DiscordEmbed",
-    "DiscordMessage",
-    "NotificationAttempt",
-    "NotificationResult",
-    "NotificationTemplate",
-    "NotificationConfig", 
-    "NotificationMetrics",
-    "ProcessStatus",
-    "ProcessResult",
-    "ProcessStep",
-    "ProcessContext",
+    "NotificationStatus", 
+    "DiscordNotification",
+    "create_discord_notification_from_issue",
+    
+    # Process models
     "BugFinderProcess",
-    "ProcessConfig",
-    "ProcessMetrics"
+    "ProcessStatus",
+    "ProcessStep",
+    
+    # Review models
+    "IssueReview",
+    "ReviewCriteria", 
+    "ReviewScore",
+    "RefinementRequest",
+    
+    # Creation models
+    "IssueCreationRequest",
+    "GitHubIssueCreation",
+    "CreationAttempt", 
+    "CreationStatus"
 ]
-
-# Versão do módulo
-__version__ = "1.0.0"

@@ -1,409 +1,270 @@
-
-"""
-BugAnalyserAgent - Agente Analisador de Bugs
-
-Localização: src/agents/bug_analyser_agent.py
-
-Responsabilidades:
-- Analisar logs estruturados para determinar se são bugs
-- Classificar a criticidade dos problemas encontrados
-- Determinar se o processo deve continuar ou parar
-- Extrair informações técnicas relevantes
-
-Este agente atua como um "detetive", investigando logs para 
-identificar problemas que requerem atenção da equipe de desenvolvimento.
-"""
-
 import json
 import logging
-from typing import Dict, Any, Optional, Protocol
 from datetime import datetime
+from typing import Optional, Dict, Any
+from uuid import uuid4
 
-from ..models.log_model import LogModel, LogLevel
-from ..models.bug_analysis import BugAnalysis, BugSeverity, BugCategory
-from ..config.prompts import BugAnalyserPrompts
-from ..config.settings import get_settings
+import google.generativeai as genai
 
+from ..models import (
+    LogModel, ProcessedLog, BugAnalysis, AnalysisResult, 
+    BugSeverity, BugCategory, BugImpact, AnalysisDecision, LogLevel
+)
+from ..config import get_settings, get_prompt
 
-# Interface para provedor de modelo de linguagem
-class LLMProvider(Protocol):
-    """
-    Interface para provedor de modelo de linguagem.
-    
-    Permite independência de modelo específico (Gemini, OpenAI, etc.).
-    """
-    
-    def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> str:
-        """
-        Gera resposta baseada no prompt fornecido.
-        
-        Args:
-            prompt: Prompt para o modelo
-            context: Contexto adicional opcional
-            
-        Returns:
-            Resposta gerada pelo modelo
-        """
-        ...
 
 class BugAnalyserAgent:
-    """
-    Agente responsável por analisar logs e identificar bugs críticos.
-    
-    Este agente usa IA para interpretar logs e determinar:
-    - Se o log representa um bug real
-    - Qual a criticidade do problema
-    - Que informações técnicas são relevantes
-    """
-    
-    def __init__(self, llm_provider: LLMProvider):
-        """
-        Inicializa o agente analisador de bugs.
-        
-        Args:
-            llm_provider: Provedor do modelo de linguagem a ser usado
-        """
-        self.llm_provider = llm_provider
-        self.logger = logging.getLogger(__name__)
+    def __init__(self):
         self.settings = get_settings()
-        self.prompts = BugAnalyserPrompts()
+        self.logger = logging.getLogger(__name__)
         
-    def analyze_log(self, log_entry: LogModel) -> BugAnalysis:
-        """
-        Analisa um log para determinar se é um bug e sua criticidade.
+        # Configure Google AI
+        genai.configure(api_key=self.settings.google_ai_api_key)
+        self.model = genai.GenerativeModel(self.settings.gemini_model)
         
-        Args:
-            log_entry: LogModel estruturado para análise
-            
-        Returns:
-            Análise completa do bug com classificação e recomendações
+        # Generation config
+        self.generation_config = {
+            "temperature": self.settings.gemini_temperature,
+            "max_output_tokens": self.settings.gemini_max_tokens,
+        }
+    
+    def process_and_analyze_log(self, raw_log: str) -> AnalysisResult:
         """
+        Processa o log bruto e realiza análise completa para determinar se é um bug.
+        Combina as funcionalidades de LogReceiver + BugAnalyser em um só agente.
+        """
+        start_time = datetime.now()
+        
         try:
-            self.logger.info(f"Iniciando análise do log: {log_entry.message[:50]}...")
+            self.logger.info("Starting log processing and analysis")
             
-            # Preparação do contexto para análise
-            analysis_context = self._prepare_analysis_context(log_entry)
+            # Etapa 1: Processar log bruto
+            processed_log = self._process_raw_log(raw_log)
             
-            # Análise principal usando IA
-            analysis_result = self._perform_ai_analysis(log_entry, analysis_context)
+            if not processed_log.is_valid:
+                self.logger.warning("Log processing failed, creating minimal analysis")
+                return self._create_failed_analysis(raw_log, processed_log, start_time)
             
-            # Validação e refinamento da análise
-            validated_result = self._validate_analysis(analysis_result, log_entry)
+            # Etapa 2: Analisar se é bug
+            bug_analysis = self._analyze_bug(processed_log)
             
-            # Criação do objeto de análise final
-            bug_analysis = self._create_bug_analysis(log_entry, validated_result)
+            # Criar resultado final
+            processing_time = (datetime.now() - start_time).total_seconds() * 1000
             
-            self.logger.info(f"Análise concluída. Categoria: {bug_analysis.category}, Severidade: {bug_analysis.severity}")
+            result = AnalysisResult(
+                log=processed_log.parsed_log,
+                analysis=bug_analysis,
+                processing_time_ms=processing_time,
+                analyzer_version="1.0.0"
+            )
             
-            return bug_analysis
+            self.logger.info(f"Analysis completed - Bug: {bug_analysis.is_bug}, "
+                           f"Severity: {bug_analysis.severity}, Decision: {bug_analysis.decision}")
+            
+            return result
             
         except Exception as e:
-            self.logger.error(f"Erro durante análise do log: {str(e)}")
-            # Retorna análise de fallback em caso de erro
-            return self._create_fallback_analysis(log_entry)
+            self.logger.error(f"Error in log analysis: {str(e)}")
+            return self._create_error_analysis(raw_log, str(e), start_time)
     
-    def _prepare_analysis_context(self, log_entry: LogModel) -> Dict[str, Any]:
-        """
-        Prepara contexto adicional para análise baseado no log.
-        """
-        context = {
-            'log_level': log_entry.level.value,
-            'service_name': log_entry.service_name or 'unknown',
-            'has_stack_trace': bool(log_entry.stack_trace),
-            'message_length': len(log_entry.message),
-            'environment': log_entry.environment or 'unknown',
-            'timestamp': log_entry.timestamp,
-        }
-        
-        # Adiciona contexto de padrões conhecidos
-        context.update(self._identify_known_patterns(log_entry))
-        
-        return context
-    
-    # Identifica padrões conhecidos no log que ajudam na análise.
-    def _identify_known_patterns(self, log_entry: LogModel) -> Dict[str, Any]:
-        """
-        Identifica padrões conhecidos no log que ajudam na análise.
-        """
-        message = log_entry.message.lower()
-        patterns = {
-            'has_exception': any(word in message for word in [
-                'exception', 'error', 'failed', 'failure', 'crash', 'fatal'
-            ]),
-            'has_connection_issue': any(word in message for word in [
-                'connection', 'timeout', 'network', 'socket', 'refused'
-            ]),
-            'has_authentication_issue': any(word in message for word in [
-                'authentication', 'authorization', 'token', 'unauthorized', 'forbidden'
-            ]),
-            'has_database_issue': any(word in message for word in [
-                'database', 'sql', 'query', 'transaction', 'deadlock'
-            ]),
-            'has_memory_issue': any(word in message for word in [
-                'memory', 'heap', 'out of space', 'allocation', 'leak'
-            ]),
-            'has_performance_issue': any(word in message for word in [
-                'slow', 'performance', 'latency', 'timeout', 'bottleneck'
-            ])
-        }
-        
-        return patterns
-    
-    # Realiza a análise principal usando o modelo de IA.
-    def _perform_ai_analysis(self, log_entry: LogModel, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Realiza a análise principal usando o modelo de IA.
-        """
-        # Constrói o prompt para análise
-        analysis_prompt = self.prompts.get_bug_analysis_prompt(log_entry, context)
-        
-        # Gera resposta do modelo
-        ai_response = self.llm_provider.generate_response(analysis_prompt, context)
-        
-        # Faz parsing da resposta JSON
+    def _process_raw_log(self, raw_log: str) -> ProcessedLog:
+        """Processa o log bruto e extrai informações estruturadas."""
         try:
-            return json.loads(ai_response)
-        except json.JSONDecodeError:
-            self.logger.warning("Resposta da IA não é JSON válido, tentando parsing alternativo")
-            return self._parse_alternative_response(ai_response)
+            # Prompt para processamento de log
+            prompt = get_prompt("log_receiver", raw_log=raw_log)
+            
+            self.logger.debug("Sending log processing request to AI")
+            response = self.model.generate_content(
+                prompt, 
+                generation_config=self.generation_config
+            )
+            
+            # Parse da resposta JSON
+            response_text = response.text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("```"):
+                response_text = response_text[3:-3].strip()
+            
+            result = json.loads(response_text)
+            
+            # Criar LogModel a partir do resultado
+            if result.get("is_valid", False) and "parsed_log" in result:
+                parsed_data = result["parsed_log"]
+                
+                # Converter timestamp string para datetime se necessário
+                if isinstance(parsed_data.get("timestamp"), str):
+                    try:
+                        parsed_data["timestamp"] = datetime.fromisoformat(parsed_data["timestamp"])
+                    except:
+                        parsed_data["timestamp"] = datetime.now()
+                elif not parsed_data.get("timestamp"):
+                    parsed_data["timestamp"] = datetime.now()
+                
+                # Garantir que level seja válido
+                level = parsed_data.get("level", "ERROR")
+                if level not in [e.value for e in LogLevel]:
+                    level = "ERROR"
+                parsed_data["level"] = level
+                
+                log_model = LogModel(**parsed_data)
+                
+                return ProcessedLog(
+                    raw_log=raw_log,
+                    parsed_log=log_model,
+                    is_valid=True,
+                    validation_errors=result.get("validation_errors", [])
+                )
+            else:
+                # Log inválido ou mal formatado
+                return ProcessedLog(
+                    raw_log=raw_log,
+                    parsed_log=self._create_fallback_log(raw_log),
+                    is_valid=False,
+                    validation_errors=result.get("validation_errors", ["Failed to parse log"])
+                )
+                
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse AI response as JSON: {e}")
+            return ProcessedLog(
+                raw_log=raw_log,
+                parsed_log=self._create_fallback_log(raw_log),
+                is_valid=False,
+                validation_errors=[f"JSON parse error: {str(e)}"]
+            )
+        except Exception as e:
+            self.logger.error(f"Error processing log: {e}")
+            return ProcessedLog(
+                raw_log=raw_log,
+                parsed_log=self._create_fallback_log(raw_log),
+                is_valid=False,
+                validation_errors=[f"Processing error: {str(e)}"]
+            )
     
-    def _parse_alternative_response(self, response: str) -> Dict[str, Any]:
-        """
-        Faz parsing alternativo caso a resposta não seja JSON válido.
-        """
-        # Implementação básica de fallback
-        lines = response.strip().split('\n')
-        result = {
-            'is_bug': False,
-            'bug_type': 'UNKNOWN',
-            'criticality': 'LOW',
-            'confidence': 0.5,
-            'reasoning': response,
-            'technical_details': {},
-            'recommended_action': 'MONITOR'
-        }
-        
-        # Busca por indicadores na resposta
-        response_lower = response.lower()
-        
-        if any(word in response_lower for word in ['yes', 'true', 'is a bug', 'critical', 'error']):
-            result['is_bug'] = True
+    def _analyze_bug(self, processed_log: ProcessedLog) -> BugAnalysis:
+        """Analisa se o log processado representa um bug real."""
+        try:
+            # Preparar contexto do log para análise
+            log_context = {
+                "timestamp": processed_log.parsed_log.timestamp.isoformat(),
+                "level": processed_log.parsed_log.level,
+                "message": processed_log.parsed_log.message,
+                "source": processed_log.parsed_log.source,
+                "function_name": processed_log.parsed_log.function_name,
+                "stack_trace": processed_log.parsed_log.stack_trace,
+                "additional_data": processed_log.parsed_log.additional_data
+            }
             
-        if any(word in response_lower for word in ['critical', 'high', 'severe']):
-            result['criticality'] = 'HIGH'
-        elif any(word in response_lower for word in ['medium', 'moderate']):
-            result['criticality'] = 'MEDIUM'
+            # Prompt para análise de bug
+            prompt = get_prompt("bug_analyser", log_context=json.dumps(log_context, indent=2))
             
-        return result
+            self.logger.debug("Sending bug analysis request to AI")
+            response = self.model.generate_content(
+                prompt,
+                generation_config=self.generation_config
+            )
+            
+            # Parse da resposta JSON
+            response_text = response.text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("```"):
+                response_text = response_text[3:-3].strip()
+            
+            result = json.loads(response_text)
+            
+            # Criar BugAnalysis
+            analysis = BugAnalysis(
+                log_id=str(uuid4()),
+                is_bug=result.get("is_bug", False),
+                severity=BugSeverity(result.get("severity", "low")),
+                category=BugCategory(result.get("category", "other")),
+                impact=BugImpact(result.get("impact", "low_impact")),
+                decision=AnalysisDecision(result.get("decision", "ignore")),
+                root_cause_hypothesis=result.get("root_cause_hypothesis"),
+                affected_components=result.get("affected_components", []),
+                reproduction_likelihood=result.get("reproduction_likelihood", 0.0),
+                priority_score=result.get("priority_score", 0.0),
+                confidence_score=result.get("confidence_score", 0.0),
+                analysis_notes=result.get("analysis_notes")
+            )
+            
+            return analysis
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse analysis response as JSON: {e}")
+            return self._create_fallback_analysis()
+        except Exception as e:
+            self.logger.error(f"Error in bug analysis: {e}")
+            return self._create_fallback_analysis()
     
-    def _validate_analysis(self, analysis_result: Dict[str, Any], log_entry: LogModel) -> Dict[str, Any]:
-        """
-        Valida e ajusta a análise baseada em regras de negócio.
-        """
-        validated = analysis_result.copy()
-        
-        # Validação baseada no nível do log
-        if log_entry.level in [LogLevel.ERROR, LogLevel.CRITICAL, LogLevel.FATAL]:
-            # Logs de erro sempre devem ser considerados como potenciais bugs
-            if not validated.get('is_bug', False):
-                validated['is_bug'] = True
-                validated['reasoning'] += " (Ajustado: logs de ERROR/CRITICAL são sempre considerados bugs)"
-        
-        # Validação de criticidade baseada em padrões
-        if log_entry.level == LogLevel.CRITICAL or log_entry.level == LogLevel.FATAL:
-            if validated.get('criticality', 'LOW') != 'HIGH':
-                validated['criticality'] = 'HIGH'
-                validated['reasoning'] += " (Ajustado: logs CRITICAL/FATAL têm criticidade HIGH)"
-        
-        # Garantir campos obrigatórios
-        validated.setdefault('confidence', 0.7)
-        validated.setdefault('technical_details', {})
-        validated.setdefault('recommended_action', 'CREATE_ISSUE')
-        
-        # Validar faixa de confiança
-        confidence = validated.get('confidence', 0.5)
-        if not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 1:
-            validated['confidence'] = 0.5
-        
-        return validated
-    
-    def _create_bug_analysis(self, log_entry: LogModel, analysis_result: Dict[str, Any]) -> BugAnalysis:
-        """
-        Cria objeto BugAnalysis a partir dos resultados da análise.
-        """
-        # Converte strings para enums
-        try:
-            bug_type = BugType[analysis_result.get('bug_type', 'UNKNOWN').upper()]
-        except KeyError:
-            bug_type = BugType.UNKNOWN
-            
-        try:
-            criticality = CriticalityLevel[analysis_result.get('criticality', 'LOW').upper()]
-        except KeyError:
-            criticality = CriticalityLevel.LOW
-            
-        try:
-            recommended_action = AnalysisResult[analysis_result.get('recommended_action', 'MONITOR').upper()]
-        except KeyError:
-            recommended_action = AnalysisResult.MONITOR
-        
-        return BugAnalysis(
-            log_entry_id=log_entry.id,
-            is_bug=analysis_result.get('is_bug', False),
-            bug_type=bug_type,
-            criticality=criticality,
-            confidence_score=analysis_result.get('confidence', 0.5),
-            reasoning=analysis_result.get('reasoning', ''),
-            technical_details=analysis_result.get('technical_details', {}),
-            recommended_action=recommended_action,
-            analysis_timestamp=datetime.now().isoformat(),
-            analyzed_by='BugAnalyserAgent'
+    def _create_fallback_log(self, raw_log: str) -> LogModel:
+        """Cria um LogModel básico quando o processamento falha."""
+        return LogModel(
+            timestamp=datetime.now(),
+            level=LogLevel.ERROR,
+            message=raw_log[:500] if len(raw_log) > 500 else raw_log,
+            source="unknown",
+            additional_data={"raw_input": raw_log}
         )
     
-    def _create_fallback_analysis(self, log_entry: LogModel) -> BugAnalysis:
-        """
-        Cria análise de fallback em caso de erro na análise principal.
-        """
-        # Análise conservadora baseada apenas no nível do log
-        is_bug = log_entry.level in [LogLevel.ERROR, LogLevel.CRITICAL, LogLevel.FATAL]
-        
-        if log_entry.level == LogLevel.CRITICAL or log_entry.level == LogLevel.FATAL:
-            criticality = CriticalityLevel.HIGH
-        elif log_entry.level == LogLevel.ERROR:
-            criticality = CriticalityLevel.MEDIUM
-        else:
-            criticality = CriticalityLevel.LOW
-        
+    def _create_fallback_analysis(self) -> BugAnalysis:
+        """Cria uma análise básica quando a análise AI falha."""
         return BugAnalysis(
-            log_entry_id=log_entry.id,
-            is_bug=is_bug,
-            bug_type=BugType.UNKNOWN,
-            criticality=criticality,
-            confidence_score=0.3,  # Baixa confiança para fallback
-            reasoning="Análise de fallback baseada apenas no nível do log devido a erro na análise principal",
-            technical_details={'fallback_reason': 'AI analysis failed'},
-            recommended_action=AnalysisResult.CREATE_ISSUE if is_bug else AnalysisResult.MONITOR,
-            analysis_timestamp=datetime.now().isoformat(),
-            analyzed_by='BugAnalyserAgent (Fallback)'
+            log_id=str(uuid4()),
+            is_bug=False,
+            severity=BugSeverity.LOW,
+            category=BugCategory.OTHER,
+            impact=BugImpact.LOW_IMPACT,
+            decision=AnalysisDecision.IGNORE,
+            confidence_score=0.0,
+            priority_score=0.0,
+            analysis_notes="Analysis failed, created fallback"
         )
     
-    def should_continue_processing(self, analysis: BugAnalysis) -> bool:
-        """
-        Determina se o processamento deve continuar baseado na análise.
+    def _create_failed_analysis(self, raw_log: str, processed_log: ProcessedLog, start_time: datetime) -> AnalysisResult:
+        """Cria um resultado de análise para logs que falharam no processamento."""
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        Args:
-            analysis: Resultado da análise do bug
-            
-        Returns:
-            True se deve continuar processamento, False caso contrário
-        """
-        # Continua se é um bug confirmado
-        if analysis.is_bug:
-            return True
+        analysis = BugAnalysis(
+            log_id=str(uuid4()),
+            is_bug=False,
+            severity=BugSeverity.LOW,
+            category=BugCategory.OTHER,
+            impact=BugImpact.LOW_IMPACT,
+            decision=AnalysisDecision.IGNORE,
+            confidence_score=0.0,
+            priority_score=0.0,
+            analysis_notes=f"Log processing failed: {', '.join(processed_log.validation_errors or [])}"
+        )
         
-        # Continua se tem alta confiança mas baixa criticidade (para monitoramento)
-        if analysis.confidence_score > 0.8 and analysis.criticality != CriticalityLevel.LOW:
-            return True
+        return AnalysisResult(
+            log=processed_log.parsed_log,
+            analysis=analysis,
+            processing_time_ms=processing_time,
+            analyzer_version="1.0.0"
+        )
+    
+    def _create_error_analysis(self, raw_log: str, error_message: str, start_time: datetime) -> AnalysisResult:
+        """Cria um resultado de análise para erros inesperados."""
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
         
-        # Para todos os outros casos
-        return False
-    
-    def get_agent_info(self) -> Dict[str, Any]:
-        """
-        Retorna informações sobre o agente.
-        """
-        return {
-            'name': 'BugAnalyserAgent',
-            'version': '1.0.0',
-            'description': 'Agente responsável por analisar logs e identificar bugs críticos',
-            'capabilities': [
-                'Análise de logs usando IA',
-                'Classificação de tipos de bug',
-                'Determinação de criticidade',
-                'Identificação de padrões conhecidos',
-                'Validação de análises',
-                'Fallback para casos de erro'
-            ],
-            'input_format': 'LogModel',
-            'output_format': 'BugAnalysis',
-            'requires_llm': True
-        }
-
-
-# Exemplo de implementação de provedor LLM para testes
-class MockLLMProvider:
-    """Provedor mock para testes sem dependência externa."""
-    
-    def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> str:
-        # Resposta simulada baseada no contexto
-        if context and context.get('log_level') in ['ERROR', 'CRITICAL', 'FATAL']:
-            return json.dumps({
-                'is_bug': True,
-                'bug_type': 'APPLICATION_ERROR',
-                'criticality': 'HIGH',
-                'confidence': 0.9,
-                'reasoning': 'Log de nível ERROR indica problema na aplicação',
-                'technical_details': {
-                    'category': 'runtime_error',
-                    'affected_component': context.get('component', 'unknown')
-                },
-                'recommended_action': 'CREATE_ISSUE'
-            })
-        else:
-            return json.dumps({
-                'is_bug': False,
-                'bug_type': 'INFO',
-                'criticality': 'LOW',
-                'confidence': 0.8,
-                'reasoning': 'Log informativo, não indica problema',
-                'technical_details': {},
-                'recommended_action': 'MONITOR'
-            })
-
-
-# Exemplo de uso e testes
-if __name__ == "__main__":
-    from ..models.log_model import LogModel, LogLevel, LogSource
-    
-    # Configuração básica de logging para testes
-    logging.basicConfig(level=logging.INFO)
-    
-    # Cria agente com provedor mock
-    mock_llm = MockLLMProvider()
-    agent = BugAnalyserAgent(mock_llm)
-    
-    # Teste 1: Log de erro crítico
-    error_log = LogModel(
-        timestamp="2024-01-15T10:30:45Z",
-        level=LogLevel.ERROR,
-        message="Falha na conexão com banco de dados",
-        source=LogSource.API,
-        component="DatabaseService",
-        stack_trace="ConnectionError at line 42...",
-        context={"connection_string": "postgres://..."}
-    )
-    
-    print("Teste 1 - Log de Erro:")
-    analysis1 = agent.analyze_log(error_log)
-    print(f"É bug: {analysis1.is_bug}")
-    print(f"Criticidade: {analysis1.criticality}")
-    print(f"Deve continuar: {agent.should_continue_processing(analysis1)}")
-    
-    # Teste 2: Log informativo
-    info_log = LogModel(
-        timestamp="2024-01-15T10:30:45Z",
-        level=LogLevel.INFO,
-        message="Usuário logado com sucesso",
-        source=LogSource.WEB,
-        component="AuthService"
-    )
-    
-    print("\nTeste 2 - Log Informativo:")
-    analysis2 = agent.analyze_log(info_log)
-    print(f"É bug: {analysis2.is_bug}")
-    print(f"Criticidade: {analysis2.criticality}")
-    print(f"Deve continuar: {agent.should_continue_processing(analysis2)}")
-    
-    # Info do agente
-    print(f"\nInfo do Agente:")
-    print(json.dumps(agent.get_agent_info(), indent=2))
+        fallback_log = self._create_fallback_log(raw_log)
+        analysis = BugAnalysis(
+            log_id=str(uuid4()),
+            is_bug=False,
+            severity=BugSeverity.LOW,
+            category=BugCategory.OTHER,
+            impact=BugImpact.LOW_IMPACT,
+            decision=AnalysisDecision.IGNORE,
+            confidence_score=0.0,
+            priority_score=0.0,
+            analysis_notes=f"Analysis error: {error_message}"
+        )
+        
+        return AnalysisResult(
+            log=fallback_log,
+            analysis=analysis,
+            processing_time_ms=processing_time,
+            analyzer_version="1.0.0"
+        )

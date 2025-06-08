@@ -130,10 +130,14 @@ def create_discord_notification_from_issue(issue: IssueModel, webhook_url: str) 
     priority = priority_map.get(issue.bug_analysis.severity, NotificationPriority.NORMAL)
     
     # Criar notificação Discord
+    description = issue.draft.description[:500] + "..." if len(issue.draft.description) > 500 else issue.draft.description
+    if issue.github_issue_url:
+        description += f"\n\n[🔗 Abrir Issue]({issue.github_issue_url})"
+
     discord_data = DiscordNotification(
         webhook_url=webhook_url,
         embed_title=f"🐛 Nova Issue Criada: {issue.draft.title}",
-        embed_description=issue.draft.description[:500] + "..." if len(issue.draft.description) > 500 else issue.draft.description
+        embed_description=description
     )
     
     # Definir cor baseada na prioridade
@@ -143,6 +147,7 @@ def create_discord_notification_from_issue(issue: IssueModel, webhook_url: str) 
     discord_data.add_field("Severidade", issue.bug_analysis.severity.value.title(), True)
     discord_data.add_field("Categoria", issue.bug_analysis.category.value.replace("_", " ").title(), True)
     discord_data.add_field("Prioridade", issue.draft.priority.value.title(), True)
+    discord_data.add_field("Impacto", issue.bug_analysis.impact.value.replace("_", " ").title(), True)
     
     if issue.github_issue_url:
         discord_data.add_field("GitHub", f"[Ver Issue]({issue.github_issue_url})", False)

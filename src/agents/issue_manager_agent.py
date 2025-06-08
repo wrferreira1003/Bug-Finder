@@ -126,7 +126,8 @@ class IssueManagerAgent:
                 error_details=result.get("error_details", {}),
                 stack_trace=result.get("stack_trace"),
                 additional_context=result.get("additional_context"),
-                suggested_fixes=result.get("suggested_fixes", [])
+                suggested_fixes=result.get("suggested_fixes", []),
+                resolution_steps=result.get("resolution_steps", [])
             )
             
             # Configurar prioridade e labels baseado na análise
@@ -274,6 +275,7 @@ class IssueManagerAgent:
                 "stack_trace": issue.draft.stack_trace,
                 "additional_context": issue.draft.additional_context,
                 "suggested_fixes": issue.draft.suggested_fixes,
+                "resolution_steps": issue.draft.resolution_steps,
                 "priority": issue.draft.priority,
                 "labels": [label.value for label in issue.draft.labels]
             }
@@ -321,6 +323,7 @@ class IssueManagerAgent:
             issue.draft.stack_trace = result.get("stack_trace", issue.draft.stack_trace)
             issue.draft.additional_context = result.get("additional_context", issue.draft.additional_context)
             issue.draft.suggested_fixes = result.get("suggested_fixes", issue.draft.suggested_fixes)
+            issue.draft.resolution_steps = result.get("resolution_steps", issue.draft.resolution_steps)
             
             # Atualizar prioridade se especificada
             if "priority" in result:

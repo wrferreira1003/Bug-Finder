@@ -339,6 +339,11 @@ class BugFinderSystem:
                 stack_trace=log_content if len(log_content) < 2000 else log_content[:2000] + "...",
                 additional_context="Automatically detected critical failure requiring immediate attention",
                 suggested_fixes=["Investigate root cause", "Apply emergency fixes", "Monitor system"],
+                resolution_steps=[
+                    "Check system logs for detailed error information",
+                    "Restart affected services to restore functionality",
+                    "Investigate root cause and deploy a fix"
+                ],
                 priority=IssuePriority.URGENT,
                 labels=["critical", "auto-generated", "high-priority", "runtime-error"]
             )

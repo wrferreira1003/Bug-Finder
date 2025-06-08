@@ -106,6 +106,9 @@ Crie uma issue completa e profissional que inclua:
 - Urgência da correção
 - Possíveis soluções
 
+### 7. Plano de Correção
+- Passos detalhados para resolver o problema
+
 ## Responda em JSON:
 ```json
 {{
@@ -127,6 +130,7 @@ Crie uma issue completa e profissional que inclua:
     "stack_trace": "stack trace se relevante",
     "additional_context": "contexto adicional importante",
     "suggested_fixes": ["possível solução 1", "possível solução 2"],
+    "resolution_steps": ["passo de resolução 1", "passo 2"],
     "priority": "low|medium|high|urgent",
     "labels": ["label1", "label2", "label3"]
 }}
@@ -227,6 +231,7 @@ Refine a issue original incorporando todo o feedback e seguindo as instruções 
 - Melhorar passos de reprodução
 - Ajustar severidade/prioridade se necessário
 - Adicionar contexto relevante
+- Detalhar plano de correção passo a passo
 
 ## Responda em JSON:
 ```json
@@ -245,6 +250,7 @@ Refine a issue original incorporando todo o feedback e seguindo as instruções 
     "stack_trace": "stack trace se relevante",
     "additional_context": "contexto adicional aprimorado",
     "suggested_fixes": ["solução refinada 1", "solução 2"],
+    "resolution_steps": ["passo de resolução refinado 1", "passo 2"],
     "priority": "prioridade ajustada se necessário",
     "labels": ["labels atualizadas"],
     "refinement_notes": "explicação das mudanças feitas"

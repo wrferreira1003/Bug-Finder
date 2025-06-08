@@ -57,6 +57,7 @@ class IssueDraft(BaseModel):
     related_logs: List[str] = Field(default_factory=list, description="IDs dos logs relacionados")
     additional_context: Optional[str] = Field(None, description="Contexto adicional")
     suggested_fixes: List[str] = Field(default_factory=list, description="Possíveis soluções sugeridas")
+    resolution_steps: List[str] = Field(default_factory=list, description="Passos detalhados para resolver o problema")
     
     def add_label(self, label: IssueLabel) -> None:
         if label not in self.labels:
@@ -133,6 +134,13 @@ class IssueDraft(BaseModel):
             content.append("## Possíveis Soluções")
             for i, fix in enumerate(self.suggested_fixes, 1):
                 content.append(f"{i}. {fix}")
+            content.append("")
+
+        # Plano de resolução detalhado
+        if self.resolution_steps:
+            content.append("## Plano de Resolução")
+            for i, step in enumerate(self.resolution_steps, 1):
+                content.append(f"{i}. {step}")
             content.append("")
         
         # Metadados

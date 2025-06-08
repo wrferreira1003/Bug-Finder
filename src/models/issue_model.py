@@ -6,6 +6,37 @@ from enum import Enum
 from .bug_analysis import BugAnalysis, BugSeverity
 
 
+class SolutionType(str, Enum):
+    QUICK_FIX = "quick_fix"
+    ROBUST_SOLUTION = "robust_solution"
+    WORKAROUND = "workaround"
+
+
+class EffortEstimate(str, Enum):
+    LOW = "baixo"
+    MEDIUM = "médio"
+    HIGH = "alto"
+
+
+class DetailedSolution(BaseModel):
+    type: SolutionType = Field(..., description="Tipo da solução")
+    title: str = Field(..., description="Título da solução")
+    description: str = Field(..., description="Descrição detalhada da solução")
+    implementation_steps: List[str] = Field(default_factory=list, description="Passos de implementação")
+    files_to_modify: List[str] = Field(default_factory=list, description="Arquivos que precisam ser modificados")
+    risks: List[str] = Field(default_factory=list, description="Riscos identificados")
+    effort_estimate: EffortEstimate = Field(EffortEstimate.MEDIUM, description="Estimativa de esforço")
+    testing_requirements: List[str] = Field(default_factory=list, description="Requisitos de teste")
+
+
+class ImplementationPlan(BaseModel):
+    prerequisites: List[str] = Field(default_factory=list, description="Pré-requisitos")
+    main_steps: List[str] = Field(default_factory=list, description="Passos principais")
+    commands_to_run: List[str] = Field(default_factory=list, description="Comandos a serem executados")
+    acceptance_criteria: List[str] = Field(default_factory=list, description="Critérios de aceitação")
+    rollback_plan: Optional[str] = Field(None, description="Plano de rollback")
+
+
 class IssueStatus(str, Enum):
     DRAFT = "draft"
     UNDER_REVIEW = "under_review"
@@ -56,8 +87,15 @@ class IssueDraft(BaseModel):
     # Informações adicionais
     related_logs: List[str] = Field(default_factory=list, description="IDs dos logs relacionados")
     additional_context: Optional[str] = Field(None, description="Contexto adicional")
-    suggested_fixes: List[str] = Field(default_factory=list, description="Possíveis soluções sugeridas")
-    resolution_steps: List[str] = Field(default_factory=list, description="Passos detalhados para resolver o problema")
+    
+    # Análise detalhada da solução
+    root_cause_analysis: Optional[str] = Field(None, description="Análise detalhada da causa raiz")
+    suggested_solutions: List[DetailedSolution] = Field(default_factory=list, description="Soluções detalhadas propostas")
+    implementation_plan: Optional[ImplementationPlan] = Field(None, description="Plano de implementação detalhado")
+    
+    # Campos legados para compatibilidade
+    suggested_fixes: List[str] = Field(default_factory=list, description="Possíveis soluções sugeridas (legado)")
+    resolution_steps: List[str] = Field(default_factory=list, description="Passos detalhados para resolver o problema (legado)")
     
     def add_label(self, label: IssueLabel) -> None:
         if label not in self.labels:
@@ -129,16 +167,92 @@ class IssueDraft(BaseModel):
             content.append(self.additional_context)
             content.append("")
         
-        # Possíveis soluções
+        # Análise da causa raiz
+        if self.root_cause_analysis:
+            content.append("## Análise da Causa Raiz")
+            content.append(self.root_cause_analysis)
+            content.append("")
+        
+        # Soluções detalhadas propostas
+        if self.suggested_solutions:
+            content.append("## Soluções Propostas")
+            for i, solution in enumerate(self.suggested_solutions, 1):
+                content.append(f"### {i}. {solution.title} ({solution.type.value.replace('_', ' ').title()})")
+                content.append(f"**Descrição:** {solution.description}")
+                content.append(f"**Esforço Estimado:** {solution.effort_estimate.value}")
+                content.append("")
+                
+                if solution.implementation_steps:
+                    content.append("**Passos de Implementação:**")
+                    for j, step in enumerate(solution.implementation_steps, 1):
+                        content.append(f"{j}. {step}")
+                    content.append("")
+                
+                if solution.files_to_modify:
+                    content.append("**Arquivos a Modificar:**")
+                    for file in solution.files_to_modify:
+                        content.append(f"- `{file}`")
+                    content.append("")
+                
+                if solution.risks:
+                    content.append("**Riscos:**")
+                    for risk in solution.risks:
+                        content.append(f"- ⚠️ {risk}")
+                    content.append("")
+                
+                if solution.testing_requirements:
+                    content.append("**Requisitos de Teste:**")
+                    for test in solution.testing_requirements:
+                        content.append(f"- 🧪 {test}")
+                    content.append("")
+                
+                content.append("---")
+                content.append("")
+        
+        # Plano de implementação
+        if self.implementation_plan:
+            content.append("## Plano de Implementação")
+            
+            if self.implementation_plan.prerequisites:
+                content.append("### Pré-requisitos")
+                for prereq in self.implementation_plan.prerequisites:
+                    content.append(f"- {prereq}")
+                content.append("")
+            
+            if self.implementation_plan.main_steps:
+                content.append("### Passos Principais")
+                for i, step in enumerate(self.implementation_plan.main_steps, 1):
+                    content.append(f"{i}. {step}")
+                content.append("")
+            
+            if self.implementation_plan.commands_to_run:
+                content.append("### Comandos a Executar")
+                content.append("```bash")
+                for cmd in self.implementation_plan.commands_to_run:
+                    content.append(cmd)
+                content.append("```")
+                content.append("")
+            
+            if self.implementation_plan.acceptance_criteria:
+                content.append("### Critérios de Aceitação")
+                for criterion in self.implementation_plan.acceptance_criteria:
+                    content.append(f"- ✅ {criterion}")
+                content.append("")
+            
+            if self.implementation_plan.rollback_plan:
+                content.append("### Plano de Rollback")
+                content.append(f"🔄 {self.implementation_plan.rollback_plan}")
+                content.append("")
+
+        # Campos legados para compatibilidade
         if self.suggested_fixes:
-            content.append("## Possíveis Soluções")
+            content.append("## Soluções Resumidas")
             for i, fix in enumerate(self.suggested_fixes, 1):
                 content.append(f"{i}. {fix}")
             content.append("")
 
-        # Plano de resolução detalhado
         if self.resolution_steps:
-            content.append("## Plano de Resolução")
+            content.append("## Passos de Resolução")
             for i, step in enumerate(self.resolution_steps, 1):
                 content.append(f"{i}. {step}")
             content.append("")

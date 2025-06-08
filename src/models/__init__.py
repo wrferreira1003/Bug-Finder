@@ -13,7 +13,11 @@ from .issue_model import (
     IssueStatus, 
     IssuePriority, 
     IssueLabel, 
-    ReviewFeedback
+    ReviewFeedback,
+    DetailedSolution,
+    ImplementationPlan,
+    SolutionType,
+    EffortEstimate
 )
 from .notification_model import (
     NotificationModel, 
@@ -62,6 +66,10 @@ __all__ = [
     "IssuePriority", 
     "IssueLabel",
     "ReviewFeedback",
+    "DetailedSolution",
+    "ImplementationPlan",
+    "SolutionType",
+    "EffortEstimate",
     
     # Notification models
     "NotificationModel",

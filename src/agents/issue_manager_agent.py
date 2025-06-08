@@ -9,7 +9,8 @@ import google.generativeai as genai
 from ..models import (
     IssueModel, IssueDraft, IssueStatus, IssuePriority, IssueLabel,
     AnalysisResult, ReviewFeedback, IssueCreationRequest, 
-    GitHubIssueCreation, CreationAttempt
+    GitHubIssueCreation, CreationAttempt, DetailedSolution, 
+    ImplementationPlan, SolutionType, EffortEstimate
 )
 from ..config import get_settings, get_prompt
 from ..tools import GitHubTool
@@ -115,6 +116,10 @@ class IssueManagerAgent:
             
             result = json.loads(response_text)
             
+            # Parsear soluções detalhadas
+            suggested_solutions = self._parse_detailed_solutions(result.get("suggested_solutions", []))
+            implementation_plan = self._parse_implementation_plan(result.get("implementation_plan", {}))
+            
             # Criar IssueDraft
             draft = IssueDraft(
                 title=result["title"],
@@ -126,6 +131,11 @@ class IssueManagerAgent:
                 error_details=result.get("error_details", {}),
                 stack_trace=result.get("stack_trace"),
                 additional_context=result.get("additional_context"),
+                # Novos campos detalhados
+                root_cause_analysis=result.get("root_cause_analysis"),
+                suggested_solutions=suggested_solutions,
+                implementation_plan=implementation_plan,
+                # Campos legados para compatibilidade
                 suggested_fixes=result.get("suggested_fixes", []),
                 resolution_steps=result.get("resolution_steps", [])
             )
@@ -322,6 +332,23 @@ class IssueManagerAgent:
             issue.draft.error_details = result.get("error_details", issue.draft.error_details)
             issue.draft.stack_trace = result.get("stack_trace", issue.draft.stack_trace)
             issue.draft.additional_context = result.get("additional_context", issue.draft.additional_context)
+            
+            # Atualizar campos detalhados de solução
+            issue.draft.root_cause_analysis = result.get("root_cause_analysis", issue.draft.root_cause_analysis)
+            
+            # Atualizar soluções detalhadas se fornecidas
+            if "suggested_solutions" in result:
+                suggested_solutions = self._parse_detailed_solutions(result["suggested_solutions"])
+                if suggested_solutions:  # Só atualizar se conseguiu parsear com sucesso
+                    issue.draft.suggested_solutions = suggested_solutions
+            
+            # Atualizar plano de implementação se fornecido
+            if "implementation_plan" in result:
+                implementation_plan = self._parse_implementation_plan(result["implementation_plan"])
+                if implementation_plan:  # Só atualizar se conseguiu parsear com sucesso
+                    issue.draft.implementation_plan = implementation_plan
+            
+            # Atualizar campos legados para compatibilidade
             issue.draft.suggested_fixes = result.get("suggested_fixes", issue.draft.suggested_fixes)
             issue.draft.resolution_steps = result.get("resolution_steps", issue.draft.resolution_steps)
             
@@ -433,3 +460,58 @@ class IssueManagerAgent:
         # Label para investigação se confidence baixa
         if analysis.confidence_score < 0.8:
             draft.add_label(IssueLabel.NEEDS_INVESTIGATION)
+    
+    def _parse_detailed_solutions(self, solutions_data: list) -> list[DetailedSolution]:
+        """Parseia soluções detalhadas do response da AI."""
+        detailed_solutions = []
+        
+        for solution_data in solutions_data:
+            try:
+                # Validar e converter tipo da solução
+                solution_type = SolutionType.QUICK_FIX  # default
+                if "type" in solution_data:
+                    type_value = solution_data["type"]
+                    if type_value in [t.value for t in SolutionType]:
+                        solution_type = SolutionType(type_value)
+                
+                # Validar e converter estimativa de esforço
+                effort_estimate = EffortEstimate.MEDIUM  # default
+                if "effort_estimate" in solution_data:
+                    effort_value = solution_data["effort_estimate"]
+                    if effort_value in [e.value for e in EffortEstimate]:
+                        effort_estimate = EffortEstimate(effort_value)
+                
+                solution = DetailedSolution(
+                    type=solution_type,
+                    title=solution_data.get("title", "Solução sem título"),
+                    description=solution_data.get("description", ""),
+                    implementation_steps=solution_data.get("implementation_steps", []),
+                    files_to_modify=solution_data.get("files_to_modify", []),
+                    risks=solution_data.get("risks", []),
+                    effort_estimate=effort_estimate,
+                    testing_requirements=solution_data.get("testing_requirements", [])
+                )
+                detailed_solutions.append(solution)
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to parse detailed solution: {e}")
+                continue
+        
+        return detailed_solutions
+    
+    def _parse_implementation_plan(self, plan_data: dict) -> Optional[ImplementationPlan]:
+        """Parseia plano de implementação do response da AI."""
+        if not plan_data:
+            return None
+        
+        try:
+            return ImplementationPlan(
+                prerequisites=plan_data.get("prerequisites", []),
+                main_steps=plan_data.get("main_steps", []),
+                commands_to_run=plan_data.get("commands_to_run", []),
+                acceptance_criteria=plan_data.get("acceptance_criteria", []),
+                rollback_plan=plan_data.get("rollback_plan")
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to parse implementation plan: {e}")
+            return None

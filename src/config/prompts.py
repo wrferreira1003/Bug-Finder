@@ -106,8 +106,20 @@ Crie uma issue completa e profissional que inclua:
 - Urgência da correção
 - Possíveis soluções
 
-### 7. Plano de Correção
+### 7. Soluções Propostas Detalhadas
+- Análise da causa raiz do problema
+- Múltiplas abordagens de solução (quick fix, solução robusta)
+- Implementação passo a passo de cada solução
+- Considerações sobre riscos e trade-offs
+- Testes necessários para validar a correção
+- Estimativa de esforço para cada solução
+
+### 8. Plano de Implementação
 - Passos detalhados para resolver o problema
+- Pré-requisitos e dependências
+- Arquivos que precisam ser modificados
+- Comandos específicos a serem executados
+- Critérios de aceitação da correção
 
 ## Responda em JSON:
 ```json
@@ -129,7 +141,27 @@ Crie uma issue completa e profissional que inclua:
     }},
     "stack_trace": "stack trace se relevante",
     "additional_context": "contexto adicional importante",
-    "suggested_fixes": ["possível solução 1", "possível solução 2"],
+    "root_cause_analysis": "análise detalhada da causa raiz do problema",
+    "suggested_solutions": [
+        {
+            "type": "quick_fix|robust_solution|workaround",
+            "title": "título da solução",
+            "description": "descrição detalhada da solução",
+            "implementation_steps": ["passo 1", "passo 2", "passo 3"],
+            "files_to_modify": ["arquivo1.py", "arquivo2.js"],
+            "risks": ["risco 1", "risco 2"],
+            "effort_estimate": "baixo|médio|alto",
+            "testing_requirements": ["teste 1", "teste 2"]
+        }
+    ],
+    "implementation_plan": {
+        "prerequisites": ["pré-requisito 1", "pré-requisito 2"],
+        "main_steps": ["passo principal 1", "passo principal 2"],
+        "commands_to_run": ["comando 1", "comando 2"],
+        "acceptance_criteria": ["critério 1", "critério 2"],
+        "rollback_plan": "plano de rollback se necessário"
+    },
+    "suggested_fixes": ["solução resumida 1", "solução resumida 2"],
     "resolution_steps": ["passo de resolução 1", "passo 2"],
     "priority": "low|medium|high|urgent",
     "labels": ["label1", "label2", "label3"]
@@ -231,7 +263,8 @@ Refine a issue original incorporando todo o feedback e seguindo as instruções 
 - Melhorar passos de reprodução
 - Ajustar severidade/prioridade se necessário
 - Adicionar contexto relevante
-- Detalhar plano de correção passo a passo
+- Detalhar soluções propostas com múltiplas abordagens
+- Criar plano de implementação completo e prático
 
 ## Responda em JSON:
 ```json
@@ -249,6 +282,26 @@ Refine a issue original incorporando todo o feedback e seguindo as instruções 
     },
     "stack_trace": "stack trace se relevante",
     "additional_context": "contexto adicional aprimorado",
+    "root_cause_analysis": "análise refinada da causa raiz",
+    "suggested_solutions": [
+        {
+            "type": "quick_fix|robust_solution|workaround",
+            "title": "título da solução refinada",
+            "description": "descrição detalhada refinada",
+            "implementation_steps": ["passo refinado 1", "passo 2"],
+            "files_to_modify": ["arquivos atualizados"],
+            "risks": ["riscos identificados"],
+            "effort_estimate": "estimativa atualizada",
+            "testing_requirements": ["testes necessários"]
+        }
+    ],
+    "implementation_plan": {
+        "prerequisites": ["pré-requisitos refinados"],
+        "main_steps": ["passos principais refinados"],
+        "commands_to_run": ["comandos atualizados"],
+        "acceptance_criteria": ["critérios refinados"],
+        "rollback_plan": "plano de rollback atualizado"
+    },
     "suggested_fixes": ["solução refinada 1", "solução 2"],
     "resolution_steps": ["passo de resolução refinado 1", "passo 2"],
     "priority": "prioridade ajustada se necessário",

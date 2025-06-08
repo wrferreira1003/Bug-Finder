@@ -46,8 +46,8 @@ Analise este log e determine:
 
 ## Responda em JSON:
 ```json
-{
-    "is_bug": boolean,
+{{
+    "is_bug": true/false,
     "severity": "low|medium|high|critical",
     "category": "categoria_do_bug",
     "impact": "tipo_de_impacto",
@@ -58,7 +58,7 @@ Analise este log e determine:
     "reproduction_likelihood": 0.0-1.0,
     "priority_score": 0-100,
     "analysis_notes": "notas adicionais sobre a análise"
-}
+}}
 ```
 
 Seja preciso, objetivo e baseie sua análise em evidências do log.
@@ -108,28 +108,28 @@ Crie uma issue completa e profissional que inclua:
 
 ## Responda em JSON:
 ```json
-{
+{{
     "title": "Título claro e específico da issue",
     "description": "Descrição detalhada do problema",
     "reproduction_steps": ["passo 1", "passo 2", "passo 3"],
     "expected_behavior": "Comportamento esperado",
     "actual_behavior": "Comportamento atual",
-    "environment_info": {
+    "environment_info": {{
         "platform": "informações relevantes",
         "version": "versão do sistema",
         "other": "outros detalhes"
-    },
-    "error_details": {
+    }},
+    "error_details": {{
         "error_type": "tipo do erro",
         "error_message": "mensagem principal",
         "location": "onde ocorreu"
-    },
+    }},
     "stack_trace": "stack trace se relevante",
     "additional_context": "contexto adicional importante",
     "suggested_fixes": ["possível solução 1", "possível solução 2"],
     "priority": "low|medium|high|urgent",
     "labels": ["label1", "label2", "label3"]
-}
+}}
 ```
 
 Seja profissional, claro e inclua todas as informações necessárias para um desenvolvedor entender e corrigir o problema.
@@ -288,31 +288,31 @@ Crie uma notificação concisa mas informativa para a equipe de desenvolvimento.
 
 ## Responda em JSON:
 ```json
-{
+{{
     "title": "🐛 Título da notificação",
     "message": "Mensagem principal da notificação",
     "summary": "Resumo em uma linha",
     "priority": "urgent|high|normal|low",
     "fields": [
-        {
+        {{
             "name": "Severidade",
             "value": "Critical/High/Medium/Low",
             "inline": true
-        },
-        {
+        }},
+        {{
             "name": "Categoria",
             "value": "Tipo do bug",
             "inline": true
-        },
-        {
+        }},
+        {{
             "name": "GitHub",
             "value": "[Ver Issue](url)",
             "inline": false
-        }
+        }}
     ],
     "color": "cor_hex_apropriada",
     "call_to_action": "O que a equipe deve fazer"
-}
+}}
 ```
 
 Seja claro, útil e adaptado à severidade do problema.
@@ -346,10 +346,10 @@ Processe e estruture o log recebido, extraindo todas as informações relevantes
 
 ## Responda em JSON:
 ```json
-{
-    "is_valid": boolean,
+{{
+    "is_valid": true/false,
     "validation_errors": ["erro1", "erro2"],
-    "parsed_log": {
+    "parsed_log": {{
         "timestamp": "ISO datetime",
         "level": "ERROR|WARNING|INFO|DEBUG|CRITICAL",
         "message": "mensagem principal",
@@ -360,12 +360,12 @@ Processe e estruture o log recebido, extraindo todas as informações relevantes
         "user_id": "ID do usuário",
         "session_id": "ID da sessão",
         "request_id": "ID da requisição",
-        "additional_data": {
+        "additional_data": {{
             "campo1": "valor1",
             "campo2": "valor2"
-        }
-    }
-}
+        }}
+    }}
+}}
 ```
 
 Seja preciso na extração e estruturação dos dados do log.

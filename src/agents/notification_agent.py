@@ -19,7 +19,11 @@ class NotificationAgent:
         self.settings = get_settings()
         self.logger = logging.getLogger(__name__)
         
-        # Configure Google AI
+        # Ensure API key is available
+        if not self.settings.google_ai_api_key:
+            raise ValueError("GOOGLE_AI_API_KEY is required but not found in environment")
+        
+        # Configure Google AI with explicit API key
         genai.configure(api_key=self.settings.google_ai_api_key)
         self.model = genai.GenerativeModel(self.settings.gemini_model)
         
@@ -142,27 +146,23 @@ class NotificationAgent:
         """Gera conteúdo personalizado da notificação usando IA."""
         try:
             # Preparar contexto para geração de notificação
-            issue_summary = {
-                "title": issue.draft.title,
-                "description": issue.draft.description[:300] + "..." if len(issue.draft.description) > 300 else issue.draft.description,
-                "severity": issue.bug_analysis.severity.value,
-                "category": issue.bug_analysis.category.value,
-                "priority": issue.draft.priority.value,
-                "github_url": issue.github_issue_url,
-                "confidence": issue.bug_analysis.confidence_score,
-                "impact": issue.bug_analysis.impact.value
-            }
+            issue_summary = f"""**Título:** {issue.draft.title}
+**Descrição:** {issue.draft.description[:300] + '...' if len(issue.draft.description) > 300 else issue.draft.description}
+**Severidade:** {issue.bug_analysis.severity.value}
+**Categoria:** {issue.bug_analysis.category.value}
+**Prioridade:** {issue.draft.priority.value}
+**GitHub URL:** {issue.github_issue_url or 'Pendente'}
+**Confiança:** {issue.bug_analysis.confidence_score}
+**Impacto:** {issue.bug_analysis.impact.value}"""
             
-            bug_analysis = {
-                "is_critical": issue.bug_analysis.requires_immediate_attention(),
-                "affected_components": issue.bug_analysis.affected_components,
-                "priority_score": issue.bug_analysis.priority_score,
-                "root_cause": issue.bug_analysis.root_cause_hypothesis
-            }
+            bug_analysis = f"""**É Crítico:** {'Sim' if issue.bug_analysis.requires_immediate_attention() else 'Não'}
+**Componentes Afetados:** {', '.join(issue.bug_analysis.affected_components)}
+**Score de Prioridade:** {issue.bug_analysis.priority_score}
+**Hipótese da Causa Raiz:** {issue.bug_analysis.root_cause_hypothesis}"""
             
             context = {
-                "issue_summary": json.dumps(issue_summary, indent=2),
-                "bug_analysis": json.dumps(bug_analysis, indent=2)
+                "issue_summary": issue_summary,
+                "bug_analysis": bug_analysis
             }
             
             # Gerar prompt e solicitar conteúdo

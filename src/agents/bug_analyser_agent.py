@@ -18,7 +18,11 @@ class BugAnalyserAgent:
         self.settings = get_settings()
         self.logger = logging.getLogger(__name__)
         
-        # Configure Google AI
+        # Ensure API key is available
+        if not self.settings.google_ai_api_key:
+            raise ValueError("GOOGLE_AI_API_KEY is required but not found in environment")
+        
+        # Configure Google AI with explicit API key
         genai.configure(api_key=self.settings.google_ai_api_key)
         self.model = genai.GenerativeModel(self.settings.gemini_model)
         

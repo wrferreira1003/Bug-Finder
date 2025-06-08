@@ -20,7 +20,11 @@ class IssueManagerAgent:
         self.settings = get_settings()
         self.logger = logging.getLogger(__name__)
         
-        # Configure Google AI
+        # Ensure API key is available
+        if not self.settings.google_ai_api_key:
+            raise ValueError("GOOGLE_AI_API_KEY is required but not found in environment")
+        
+        # Configure Google AI with explicit API key
         genai.configure(api_key=self.settings.google_ai_api_key)
         self.model = genai.GenerativeModel(self.settings.gemini_model)
         
@@ -89,8 +93,8 @@ class IssueManagerAgent:
             bug_analysis = analysis_result.analysis.get_analysis_summary()
             
             context = {
-                "log_context": json.dumps(log_context, indent=2),
-                "bug_analysis": json.dumps(bug_analysis, indent=2)
+                "log_context": json.dumps(log_context, indent=2, default=str),
+                "bug_analysis": json.dumps(bug_analysis, indent=2, default=str)
             }
             
             # Gerar prompt e solicitar criação
